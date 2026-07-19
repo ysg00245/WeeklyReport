@@ -29,8 +29,8 @@
 ## 빠르게 실행하기
 
 ```bash
-git clone <this-repo>
-cd weekly-report
+git clone https://github.com/ysg00245/WeeklyReport.git
+cd WeeklyReport
 
 python -m venv venv
 venv\Scripts\activate          # macOS/Linux: source venv/bin/activate
@@ -263,6 +263,7 @@ static/
 | [`CLAUDE.md`](CLAUDE.md) | **AI 온보딩용 요약** — 프로젝트 개요, 파일 지도, 필수 주의사항 5가지 |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 조직 모델, 인증 계층, 요청 흐름, 실시간 설계, 의도적으로 안 넣은 것들 |
 | [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) | 코딩 규칙 12가지와 **그 규칙이 생긴 이유**(대부분 실제 사고 이력) |
+| [`docs/AI_SUMMARY.md`](docs/AI_SUMMARY.md) | **AI 요약** — 추천 모델, 예상 비용 계산법, 프롬프트 조립 구조와 커스터마이즈 |
 
 `CLAUDE.md` 는 Claude Code 가 저장소를 열 때 자동으로 읽습니다. 다른 AI 도구를 쓴다면
 그 파일을 먼저 읽혀주세요.

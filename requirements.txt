@@ -1,14 +1,26 @@
-fastapi
-uvicorn
-websockets
-aiosqlite
-sqlalchemy
-asyncpg
-psycopg2-binary
-bcrypt
-python-dotenv
-python-multipart
-jinja2
-anthropic
-pywebpush
-apscheduler
+# 웹 프레임워크
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.27,<1.0
+websockets>=12.0
+
+# DB — SQLAlchemy(async) + 엔진별 드라이버
+sqlalchemy>=2.0,<3.0
+aiosqlite>=0.19        # SQLite  (DATABASE_URL 미설정 시)
+asyncpg>=0.29          # PostgreSQL (DATABASE_URL 설정 시)
+
+# 인증
+bcrypt>=4.0,<5.0
+
+# 설정
+python-dotenv>=1.0
+
+# AI 요약 (ANTHROPIC_API_KEY 없으면 기능만 비활성화)
+anthropic>=0.40
+
+# Web Push — py_vapid / cryptography 는 database.py 에서 직접 import 하므로 명시적으로 선언
+pywebpush>=2.0
+py-vapid>=1.9
+cryptography>=42.0
+
+# 마감 알림 스케줄러
+apscheduler>=3.10,<4.0

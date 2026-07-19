@@ -5,12 +5,25 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: ADMIN_PW
+      # ── 필수 ──
+      - key: SYSTEM_ADMIN_PW      # 시스템 관리자 콘솔 (전 조직 관리)
         sync: false
-      - key: ANTHROPIC_API_KEY
+      - key: ADMIN_PW             # 팀 관리자 기본 비밀번호
+        sync: false
+      # ── 데이터베이스 ──
+      # 컨테이너 디스크는 재배포 시 초기화될 수 있어 PostgreSQL 사용을 권장한다.
+      # (Neon/Supabase 등 접속 URL. 비워두면 아래 DB_PATH 의 SQLite 로 동작)
+      - key: DATABASE_URL
         sync: false
       - key: DB_PATH
         value: /opt/render/project/src/weekly_report.db
+      # ── 선택 ──
+      - key: ANTHROPIC_API_KEY    # AI 요약. 없으면 요약 기능만 비활성화
+        sync: false
+      - key: VAPID_SUB            # Web Push 발신자 (배포 후 받은 https:// 주소)
+        sync: false
+      - key: ENV                  # prod 면 /docs 등 OpenAPI 문서 비활성화
+        value: prod
       - key: PYTHON_VERSION
         value: "3.11"
     disk:

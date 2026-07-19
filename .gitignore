@@ -15,3 +15,25 @@ migrate_to_neon.py
 # 조직도 CSV — 실명 포함 로컬 작업 파일 (퍼블릭 저장소 반출 금지)
 조직도_*.csv
 *_org.csv
+
+# DB 파일 전반 (DB_PATH 를 바꿔도 커밋되지 않도록)
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 환경변수 변형 (.env.example 만 추적)
+.env.*
+!.env.example
+
+# 실명이 들어갈 수 있는 데이터 파일 — 화이트리스트 방식
+*.csv
+!sample_*.csv
+
+# OS / 백업
+.DS_Store
+Thumbs.db
+*.bak
+*.backup

@@ -1,16 +1,8 @@
 import os
 from dotenv import load_dotenv
 
-# .env에서 ADMIN_PW, ANTHROPIC_API_KEY 등을 로드하되,
-# DATABASE_URL은 .env가 아닌 시스템 환경변수(Render 등)에서만 사용.
-# 로컬에서는 .env의 DATABASE_URL이 Neon PostgreSQL을 가리키므로 충돌 방지.
-_saved_db_url = os.environ.get("DATABASE_URL")
+# .env 로드. 시스템 환경변수(Render 등)가 이미 설정돼 있으면 load_dotenv 가 덮어쓰지 않는다.
 load_dotenv()
-# if _saved_db_url is not None:
-#     os.environ["DATABASE_URL"] = _saved_db_url
-# elif "DATABASE_URL" in os.environ:
-#     # .env에서 로드된 DATABASE_URL 제거 → SQLite 폴백
-#     del os.environ["DATABASE_URL"]
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -42,10 +34,25 @@ app = FastAPI(
     openapi_url=None if _is_prod else "/openapi.json",
 )
 
-# ADMIN_PW 기본값 검증 (운영에서 약한 비번 방지)
+# ── 관리자 비밀번호 검증 ─────────────────────────────────
+# 이 코드는 공개 저장소라 기본값이 공격자에게도 알려져 있다.
+# 운영(ENV=prod / Render)에서는 경고만 하지 말고 기동 자체를 막는다.
+_WEAK_PW = {"1234", "admin", "password", "changeme", "test", ""}
 _admin_pw = os.getenv("ADMIN_PW", "1234")
-if _is_prod and _admin_pw in ("1234", "admin", "password", ""):
-    print("[⚠️ SECURITY] ADMIN_PW가 기본/약한 값입니다. 환경변수로 강력한 비밀번호를 설정하세요.")
+_sys_admin_pw = os.getenv("SYSTEM_ADMIN_PW", "")
+
+if _is_prod:
+    _weak = [n for n, v in (("ADMIN_PW", _admin_pw), ("SYSTEM_ADMIN_PW", _sys_admin_pw))
+             if v.strip().lower() in _WEAK_PW]
+    if _weak:
+        raise RuntimeError(
+            f"[SECURITY] {', '.join(_weak)} 가 비어 있거나 기본/취약한 값입니다. "
+            "운영 환경에서는 기동할 수 없습니다. 환경변수에 강력한 비밀번호를 설정하세요."
+        )
+elif _admin_pw.strip().lower() in _WEAK_PW or not _sys_admin_pw.strip():
+    # 이모지를 쓰지 않는다 — Windows 기본 콘솔(cp949)에서 UnicodeEncodeError 로 기동이 죽는다.
+    print("[SECURITY] 관리자 비밀번호가 기본값이거나 비어 있습니다. "
+          "로컬 개발에서는 허용되지만 운영 배포 전 반드시 변경하세요.")
 
 # 정적 파일 마운트
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -227,7 +234,9 @@ async def send_deadline_push_notifications(*, force: bool = False) -> dict:
                 except Exception as e:
                     print(f"[Scheduler] 팀 {t['name']} 발송 오류: {e}")
                     summary["details"].append({"team_id": t["id"], "team_name": t["name"], "error": str(e)})
-            print(f"[Scheduler] 마감 알림 완료 — 팀 {summary['teams_processed']}개 처리, ✅ {summary['total_sent']} / ⚪ {summary['total_no_sub']} / ❌ {summary['total_failed']}")
+            # 이모지 금지 — Windows 기본 콘솔(cp949)에서 UnicodeEncodeError 발생
+            print(f"[Scheduler] 마감 알림 완료 — 팀 {summary['teams_processed']}개 처리, "
+                  f"발송 {summary['total_sent']} / 구독없음 {summary['total_no_sub']} / 실패 {summary['total_failed']}")
         except Exception as exc:
             import traceback
             print(f"[Scheduler] 오류: {exc}")
