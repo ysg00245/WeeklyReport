@@ -112,7 +112,26 @@ raise HTTPException(404, f"{josa((await get_org_labels(db))['team'], '을')} 찾
 헤더·로그인 화면·푸터 저작권 표기에 반영됩니다. 값이 비면 구분자까지 함께 사라지므로
 `© 2026  · ` 같은 찌꺼기가 남지 않습니다.
 
-로고는 `static/img/app-icon*.png` 를 교체하세요. `manifest.json` 의 아이콘 경로와 짝을 이룹니다.
+### 로고 교체
+
+`static/img/` 에 들어있는 아이콘은 **어느 조직에도 속하지 않는 기본 아이콘**입니다.
+자사 로고로 바꾸려면 같은 파일명·같은 크기로 덮어쓰면 됩니다.
+
+| 파일 | 크기 | 용도 |
+|---|---|---|
+| `app-icon.png` | 96×96 | 헤더·로그인 화면·로딩 화면 |
+| `app-icon-192.png` / `app-icon-512.png` | 192, 512 | PWA 설치 아이콘, iOS 홈 화면 |
+| `app-icon-192-maskable.png` / `app-icon-512-maskable.png` | 192, 512 | Android adaptive icon |
+| `*-dev.png` | 동일 | 개발 환경용 (설치된 앱을 운영과 구분) |
+
+**maskable 아이콘은 여백을 넉넉히 두세요.** Android 가 원형·둥근사각형 등으로 잘라내기 때문에,
+도형이 가장자리까지 차 있으면 잘립니다. 중앙 80% 안에 넣는 것을 권장합니다.
+
+파일명을 바꾸고 싶다면 `static/manifest.json`, `static/manifest.dev.json`, `static/sw.js`,
+`static/index.html` 의 경로도 함께 고쳐야 합니다. 그냥 덮어쓰는 쪽이 간단합니다.
+
+교체 후에는 `static/index.html` 의 캐시버스터(`?v=`)를 올려야 기존 사용자에게도 새 로고가 보입니다.
+이미 앱을 설치한 사용자는 홈 화면 아이콘이 OS 캐시에 남아 있어, 재설치해야 바뀔 수 있습니다.
 
 ## 배포
 
