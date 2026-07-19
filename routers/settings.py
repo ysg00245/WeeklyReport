@@ -343,10 +343,23 @@ async def update_deadline_config(
         if field not in config:
             raise HTTPException(400, f"필수 필드 누락: {field}")
 
+    # 알림 시각 정규화 — 잘못된 값이 저장돼 스케줄러가 깨지는 것을 막는다
+    from deadline import normalize_notify_times
+    config["notify_times"] = normalize_notify_times(config)
+
     await db.execute(
         text("""INSERT INTO settings (key, value, team_id) VALUES ('deadline_config', :val, :tid)
                 ON CONFLICT(team_id, key) DO UPDATE SET value = excluded.value"""),
         {"val": json.dumps(config, ensure_ascii=False), "tid": tid}
     )
     await db.commit()
-    return {"status": "ok"}
+
+    # 알림 시각이 바뀌었을 수 있으므로 cron 잡 재등록 (서버 재시작 없이 즉시 반영)
+    scheduled = []
+    try:
+        from main import refresh_deadline_jobs
+        scheduled = await refresh_deadline_jobs()
+    except Exception as e:
+        print(f"[Settings] 마감 알림 스케줄 갱신 실패: {e}")
+
+    return {"status": "ok", "notify_times": config["notify_times"], "scheduled_times": scheduled}

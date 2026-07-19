@@ -147,12 +147,20 @@ async def get_sw():
                         headers={"Cache-Control": "no-cache"})
 
 # ── 마감 전날 12:00 KST Push 알림 스케줄러 ──
-async def _send_deadline_for_team(db, team_id: int, team_name: str, *, force: bool = False) -> dict:
-    """팀 1개 처리. force=True 면 시간 범위 체크 건너뜀 (수동 트리거 용).
-    반환: {team_id, team_name, sent, no_sub, failed, skipped_reason}"""
-    from deadline import load_deadline_config, get_deadline_for_week, get_kst_now
+async def _send_deadline_for_team(db, team_id: int, team_name: str, *, force: bool = False,
+                                  at_time: str | None = None) -> dict:
+    """팀 1개 처리.
+
+    at_time="HH:MM" — 스케줄 발송. 그 팀의 notify_times 중 (오늘 날짜, 이 시각)에
+                      해당하는 항목이 있을 때만 보낸다.
+    force=True      — 관리자 수동 트리거. 시각 조건 없이 미제출자에게 즉시 발송.
+
+    반환: {team_id, team_name, sent, no_sub, failed, skipped_reason}
+    """
+    from deadline import (load_deadline_config, get_deadline_for_week, get_kst_now,
+                          normalize_notify_times)
     from routers.push import send_push_to_member
-    from datetime import datetime as dt
+    from datetime import datetime as dt, timedelta as td
 
     kst_now = get_kst_now()
     year, week, _ = kst_now.isocalendar()
@@ -166,9 +174,25 @@ async def _send_deadline_for_team(db, team_id: int, team_name: str, *, force: bo
 
     deadline_dt = dt.strptime(info["deadline_at"], "%Y-%m-%d %H:%M:%S")
     hours_until = (deadline_dt - kst_now).total_seconds() / 3600
-    if not force and not (0 < hours_until <= 36):
-        return {"team_id": team_id, "team_name": team_name, "sent": 0, "no_sub": 0, "failed": 0,
-                "skipped_reason": f"마감까지 {hours_until:.1f}h — 발송 범위(0~36h) 밖"}
+
+    # 스케줄 발송: 오늘이 '마감일 + day_offset' 이고 시각이 일치하는 항목을 찾는다.
+    matched = None
+    if not force:
+        today = kst_now.date()
+        for nt in normalize_notify_times(config):
+            if not nt.get("enabled", True):
+                continue
+            if nt["time"] != at_time:
+                continue
+            if (deadline_dt.date() + td(days=nt["day_offset"])) == today:
+                matched = nt
+                break
+        if not matched:
+            return {"team_id": team_id, "team_name": team_name, "sent": 0, "no_sub": 0, "failed": 0,
+                    "skipped_reason": f"{at_time} 에 예정된 알림 없음"}
+        if hours_until <= 0:
+            return {"team_id": team_id, "team_name": team_name, "sent": 0, "no_sub": 0, "failed": 0,
+                    "skipped_reason": "이미 마감 시각 경과"}
 
     # 미제출자 조회 (팀 한정 + 노출 + 보고 대상)
     result = await db.execute(text("""
@@ -185,7 +209,11 @@ async def _send_deadline_for_team(db, team_id: int, team_name: str, *, force: bo
                 "skipped_reason": "전원 제출 완료"}
 
     deadline_label = deadline_dt.strftime("%m월 %d일 %H:%M")
-    is_day_of = 0 < hours_until <= 12
+    # 당일/전날 판정은 설정의 day_offset 기준. (시간차로 추정하면 마감 시각을 바꿀 때마다 어긋난다)
+    if matched is not None:
+        is_day_of = matched["day_offset"] == 0
+    else:
+        is_day_of = deadline_dt.date() == kst_now.date()   # 수동 트리거
     push_title = "⏰ 주간보고 오늘 마감 알림" if is_day_of else "⏰ 주간보고 마감 전날 알림"
     push_body_prefix = "오늘" if is_day_of else "내일"
     push_tag = "deadline-reminder-day-of" if is_day_of else "deadline-reminder-before"
@@ -210,9 +238,12 @@ async def _send_deadline_for_team(db, team_id: int, team_name: str, *, force: bo
             "skipped_reason": None, "unsubmitted_count": len(unsubmitted)}
 
 
-async def send_deadline_push_notifications(*, force: bool = False) -> dict:
-    """매일 12:00 KST 또는 관리자 수동 트리거. 전체 팀 순회.
-    force=True 면 시간 범위 검사 생략."""
+async def send_deadline_push_notifications(*, force: bool = False, at_time: str | None = None) -> dict:
+    """전체 팀 순회하며 마감 알림 발송.
+
+    at_time="HH:MM" — 스케줄러가 그 시각에 호출. 각 팀은 자기 notify_times 와 대조해 판단.
+    force=True      — 관리자 수동 트리거. 시각 조건 무시.
+    """
     from database import AsyncSessionLocal
 
     summary = {"teams_processed": 0, "teams_sent": 0, "total_sent": 0, "total_no_sub": 0, "total_failed": 0, "details": []}
@@ -223,7 +254,7 @@ async def send_deadline_push_notifications(*, force: bool = False) -> dict:
             teams = teams_r.mappings().all()
             for t in teams:
                 try:
-                    r = await _send_deadline_for_team(db, t["id"], t["name"], force=force)
+                    r = await _send_deadline_for_team(db, t["id"], t["name"], force=force, at_time=at_time)
                     summary["teams_processed"] += 1
                     if r.get("sent", 0) > 0:
                         summary["teams_sent"] += 1
@@ -243,20 +274,58 @@ async def send_deadline_push_notifications(*, force: bool = False) -> dict:
             traceback.print_exc()
     return summary
 
+async def _collect_notify_times() -> list[str]:
+    """전 팀 설정에서 알림 시각(HH:MM)의 합집합을 구한다.
+
+    이 시각에만 스케줄러가 깨어나므로, 팀이 몇 개든 하루 DB 접근은 '서로 다른 시각의 수' 로 제한된다.
+    (매시간 폴링하면 Neon autosuspend 가 걸리지 않아 요금이 급증한다 — database.py 주석 참고)
+    """
+    from database import AsyncSessionLocal
+    from deadline import load_deadline_config, normalize_notify_times, DEFAULT_NOTIFY_TIMES
+    times: set[str] = set()
+    try:
+        async with AsyncSessionLocal() as db:
+            rows = (await db.execute(text("SELECT id FROM teams"))).fetchall()
+            for (tid,) in rows:
+                cfg = await load_deadline_config(db, team_id=tid)
+                if not cfg.get("enabled", True):
+                    continue
+                for nt in normalize_notify_times(cfg):
+                    if nt.get("enabled", True):
+                        times.add(nt["time"])
+    except Exception as e:
+        print(f"[Scheduler] 알림 시각 수집 실패 — 기본값 사용: {e}")
+    if not times:
+        times = {x["time"] for x in DEFAULT_NOTIFY_TIMES}
+    return sorted(times)
+
+
+async def refresh_deadline_jobs() -> list[str]:
+    """설정된 알림 시각마다 cron 잡을 재등록. 마감 설정이 저장될 때마다 호출된다."""
+    for job in scheduler.get_jobs():
+        if job.id.startswith("deadline_push"):
+            scheduler.remove_job(job.id)
+    times = await _collect_notify_times()
+    for t in times:
+        h, m = map(int, t.split(":"))
+        scheduler.add_job(
+            send_deadline_push_notifications,
+            trigger="cron",
+            hour=h, minute=m,
+            timezone="Asia/Seoul",
+            id=f"deadline_push_{h:02d}{m:02d}",
+            kwargs={"at_time": t},
+            replace_existing=True,
+        )
+    print(f"[Scheduler] 마감 알림 시각 등록: {', '.join(times)} (KST)")
+    return times
+
+
 @app.on_event("startup")
 async def on_startup():
     await init_db()
-    # 마감 전날 알림 스케줄러 등록 (매일 12:00 KST)
-    scheduler.add_job(
-        send_deadline_push_notifications,
-        trigger="cron",
-        hour=12, minute=0,
-        timezone="Asia/Seoul",
-        id="deadline_push",
-        replace_existing=True,
-    )
     scheduler.start()
-    print("[Scheduler] 마감 알림 스케줄러 시작")
+    await refresh_deadline_jobs()
     # ⚠️ DB keepalive 루프는 30차에서 제거 — Neon compute 한도 소진(서비스 정지)의 원인.
     #    유휴 시 autosuspend 로 과금을 멈추는 것이 정상 동작이며, 재도입 금지 (database.py 주석 참고).
 

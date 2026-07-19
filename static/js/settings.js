@@ -301,10 +301,83 @@ function renderDeadlineSettings() {
           <button class="btn btn-s btn-sm" onclick="addHoliday()">추가</button>
         </div>
       </div>
+      ${_dlNotifyHtml()}
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
         <button class="btn btn-p" onclick="saveDeadlineSettings()">마감 설정 저장</button>
       </div>
     </div>`;
+}
+
+// ── 마감 알림 스케줄 (미제출자 대상 푸시) ─────────────────
+// 마감일 기준 상대 지정. 서버 스케줄러는 여기 등록된 시각에만 깨어난다
+// (매시간 폴링하면 DB 자동 절전이 안 걸려 요금이 급증 — 시각을 필요 이상 늘리지 말 것).
+const _DL_OFFSET_LABELS = { 0: '마감 당일', '-1': '마감 전날', '-2': '2일 전', '-3': '3일 전' };
+
+function _dlNotifyList() {
+  if (!Array.isArray(_dlConfig.notify_times) || !_dlConfig.notify_times.length) {
+    _dlConfig.notify_times = [
+      { day_offset: -1, time: '12:00', enabled: true },
+      { day_offset: 0,  time: '09:00', enabled: true },
+    ];
+  }
+  return _dlConfig.notify_times;
+}
+
+function _dlNotifyHtml() {
+  const list = _dlNotifyList();
+  // 마감 시각 이후로 잡힌 당일 알림은 실제로 발송되지 않으므로 경고를 띄운다
+  const dl = (_dlConfig.deadline_time || '18:00');
+  const rows = list.map((nt, i) => {
+    const late = Number(nt.day_offset) === 0 && String(nt.time) >= dl;
+    return `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line)">
+      <input type="checkbox" ${nt.enabled !== false ? 'checked' : ''} title="사용 여부"
+             onchange="updateDlNotify(${i},'enabled',this.checked)" style="margin:0">
+      <select onchange="updateDlNotify(${i},'day_offset',parseInt(this.value))"
+        style="height:34px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:0 8px;border-radius:8px;font-size:13px">
+        ${Object.entries(_DL_OFFSET_LABELS).map(([v, l]) =>
+          `<option value="${v}" ${Number(nt.day_offset) === Number(v) ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
+      <input type="time" value="${esc(nt.time || '09:00')}" onchange="updateDlNotify(${i},'time',this.value)"
+        style="height:34px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:0 8px;border-radius:8px;font-size:13px">
+      ${late ? '<span style="font-size:11px;color:var(--warn,#d97706);font-weight:600">⚠️ 마감 이후 — 발송 안 됨</span>' : ''}
+      <div style="flex:1"></div>
+      <button class="btn btn-s btn-sm" onclick="removeDlNotify(${i})" title="삭제">✕</button>
+    </div>`;
+  }).join('') || '<div style="color:var(--text3);font-size:12px;padding:8px 0">등록된 알림이 없습니다 — 미제출자에게 아무 알림도 가지 않습니다.</div>';
+
+  const active = [...new Set(list.filter(n => n.enabled !== false).map(n => n.time))].sort();
+  return `
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">🔔 마감 알림 스케줄</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">
+        해당 시각에 <b>아직 제출하지 않은 ${orgLabel('member')}</b>에게만 푸시를 보냅니다. (앱 설치·알림 허용자 한정)
+      </div>
+      ${rows}
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+        <button class="btn btn-s btn-sm" onclick="addDlNotify()">+ 알림 추가</button>
+        <span style="font-size:11px;color:var(--text3)">
+          서버는 ${active.length ? active.join(', ') + ' (KST)' : '—'} 에만 깨어납니다
+        </span>
+      </div>
+    </div>`;
+}
+
+function updateDlNotify(i, key, val) {
+  const list = _dlNotifyList();
+  if (!list[i]) return;
+  list[i][key] = val;
+  renderDeadlineSettings();   // 마감 이후 경고·요약 줄 갱신
+}
+
+function addDlNotify() {
+  _dlNotifyList().push({ day_offset: -1, time: '12:00', enabled: true });
+  renderDeadlineSettings();
+}
+
+function removeDlNotify(i) {
+  _dlNotifyList().splice(i, 1);
+  renderDeadlineSettings();
 }
 
 function updateDlField(key, val) {

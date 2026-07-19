@@ -8,13 +8,56 @@ from datetime import datetime, timedelta, date, time
 
 
 # ── 기본 설정값 ──
+# notify_times: 미제출자에게 보낼 푸시 알림 시각. 마감일 기준 상대 지정.
+#   day_offset  -1 = 마감 전날 / 0 = 마감 당일 (마감일 자체가 공휴일 조정을 거친 뒤의 날짜)
+#   time        "HH:MM" (KST)
+# 스케줄러는 전 팀 설정에서 time 값을 모아 그 시각에만 깨어난다(main.py `_refresh_deadline_jobs`).
+# 시각을 늘리면 그만큼 DB 를 깨우므로 필요한 만큼만 둘 것.
+DEFAULT_NOTIFY_TIMES = [
+    {"day_offset": -1, "time": "12:00", "enabled": True},   # 마감 전날 낮
+    {"day_offset": 0,  "time": "09:00", "enabled": True},   # 마감 당일 아침
+]
+
 DEFAULT_DEADLINE_CONFIG = {
     "report_day": 4,          # 보고일: 금요일 (0=월, 4=금)
     "deadline_day_offset": -1, # 마감일 = 보고일 - 1일 (목요일)
     "deadline_time": "18:00",  # 마감 시각
     "holidays": [],            # 공휴일 목록 (YYYY-MM-DD 문자열 배열)
-    "enabled": True            # 마감 기능 활성화 여부
+    "enabled": True,           # 마감 기능 활성화 여부
+    "notify_times": [dict(x) for x in DEFAULT_NOTIFY_TIMES],
 }
+
+
+def normalize_notify_times(config: dict) -> list:
+    """설정의 notify_times 를 정규화. 값이 없거나 깨져 있으면 기본값으로 폴백.
+
+    구버전 설정(notify_times 키 자체가 없음)도 그대로 읽히도록 하기 위한 방어층.
+    """
+    raw = config.get("notify_times")
+    if not isinstance(raw, list) or not raw:
+        return [dict(x) for x in DEFAULT_NOTIFY_TIMES]
+    out = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        t = str(item.get("time", "")).strip()
+        try:
+            h, m = t.split(":")
+            h, m = int(h), int(m)
+            if not (0 <= h <= 23 and 0 <= m <= 59):
+                continue
+        except Exception:
+            continue
+        try:
+            off = int(item.get("day_offset", 0))
+        except Exception:
+            continue
+        out.append({
+            "day_offset": max(-7, min(0, off)),      # 마감 당일(0) ~ 7일 전
+            "time": f"{h:02d}:{m:02d}",
+            "enabled": bool(item.get("enabled", True)),
+        })
+    return out or [dict(x) for x in DEFAULT_NOTIFY_TIMES]
 
 
 def get_kst_now() -> datetime:
