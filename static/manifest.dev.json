@@ -1,0 +1,38 @@
+{
+  "name": "주간보고 (Dev)",
+  "short_name": "주보Dev",
+  "description": "주간보고 웹앱 (개발 환경)",
+  "start_url": "/?dev=1",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#dc2626",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "/static/img/app-icon-192-dev.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/img/app-icon-512-dev.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/img/app-icon-192-maskable-dev.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/img/app-icon-512-maskable-dev.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+websockets
+aiosqlite
+sqlalchemy
+asyncpg
+psycopg2-binary
+bcrypt
+python-dotenv
+python-multipart
+jinja2
+anthropic
+pywebpush
+apscheduler

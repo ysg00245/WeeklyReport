@@ -1,0 +1,1811 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#2f5bea">
+<title>주간보고 시스템</title>
+<link rel="manifest" href="/manifest.json?v=20260512d">
+<!-- iOS PWA 홈 화면 아이콘 — Safari 는 manifest.icons 무시하고 apple-touch-icon 만 사용 -->
+<link rel="apple-touch-icon" href="/static/img/app-icon-192.png">
+<link rel="apple-touch-icon" sizes="192x192" href="/static/img/app-icon-192.png">
+<link rel="apple-touch-icon" sizes="512x512" href="/static/img/app-icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="주간보고">
+<link rel="stylesheet" href="/static/css/style.css?v=20260720c">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="loading-ov" id="initLoader">
+  <img src="/static/img/app-icon.png" alt="logo" class="loading-logo">
+  <div class="prog-w"><div class="prog-bar" id="initProgBar"></div></div>
+  <div class="loading-txt" id="initLoadTxt">시스템을 준비하고 있습니다...</div>
+</div>
+
+<!-- 시스템 오류 화면 (초기 로딩 또는 치명적 통신 오류 시 노출) -->
+<div id="systemErrorOv" style="display:none;position:fixed;inset:0;z-index:9998;background:var(--bg);overflow:auto;padding:6px">
+
+  <!-- 외곽 테두리 박스 — viewport 거의 전체를 감쌈 (여백 매우 좁게) -->
+  <div style="min-height:calc(100vh - 12px);background:var(--card);border:1.5px solid var(--border);
+              border-radius:10px;box-shadow:0 8px 36px rgba(0,0,0,0.05);
+              display:flex;flex-direction:column;padding:20px 24px;box-sizing:border-box">
+
+    <!-- 상단 브랜드 (외곽 박스 좌상단) -->
+    <div style="display:flex;align-items:center;gap:12px;padding-bottom:24px;border-bottom:1px solid var(--border)">
+      <div class="brand-logo" style="width:40px;height:40px;display:flex;align-items:center;justify-content:center">
+        <img src="/static/img/app-icon.png" alt="logo" style="width:100%;height:100%;object-fit:contain">
+      </div>
+      <div style="display:flex;flex-direction:column;line-height:1.25">
+        <span style="font-size:17px;font-weight:800;color:var(--text)" data-ol="{product}">Weekly Report</span>
+        <span style="font-size:11px;color:var(--text2)" data-ol="{brandsub}">주간보고</span>
+      </div>
+    </div>
+
+    <!-- 가운데 오류 콘텐츠 -->
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:32px 0">
+      <div style="max-width:520px;width:100%;text-align:center">
+        <div style="font-size:72px;line-height:1;margin-bottom:24px">⚠️</div>
+        <h1 style="font-size:24px;font-weight:800;color:var(--text);margin:0 0 12px">
+          시스템에 일시적 문제가 발생했어요
+        </h1>
+        <p style="font-size:14px;color:var(--text2);margin:0 0 28px;line-height:1.7">
+          주간보고 서버에 연결할 수 없습니다.<br>
+          잠시 뒤 다시 시도하거나, 계속되면 관리자에게 문의해 주세요.
+        </p>
+        <div id="systemErrorDetail"
+          style="font-size:12px;color:var(--text3);background:var(--bg2);border:1px solid var(--border);
+                 border-radius:8px;padding:12px 16px;margin:0 auto 28px;font-family:monospace;
+                 word-break:break-all;text-align:left;display:none;max-width:480px"></div>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+          <button class="btn-new" onclick="location.reload()" style="min-width:130px">🔄 다시 시도</button>
+          <button class="btn-new ghost" onclick="document.getElementById('systemErrorOv').style.display='none'">
+            닫기
+          </button>
+        </div>
+        <div class="faint" style="font-size:11px;margin-top:28px;line-height:1.6">
+          문제가 계속되면 다음 정보를 관리자에게 전달해 주세요<br>
+          시간: <span id="systemErrorTime"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 하단 푸터 (외곽 박스 하단) -->
+    <div style="text-align:center;padding-top:20px;border-top:1px solid var(--border)">
+      <span class="faint" style="font-size:11px" data-ol="{copyright}"></span>
+    </div>
+  </div>
+</div>
+
+<div class="spinner-ov" id="actionLoader">
+  <div class="ios-spinner">
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+  </div>
+  <div class="spinner-txt" id="actionLoadTxt">처리 중...</div>
+</div>
+
+<!-- 개발기 배너 (localhost 접속 시만 표시) -->
+<div id="devBanner" style="display:none">DEV · 개발 환경</div>
+
+<!-- 헤더 (새 디자인 topbar) -->
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-logo"><img src="/static/img/app-icon.png" alt="logo"></div>
+    <div><span data-ol="{product}">Weekly Report</span><small id="brandSub">주간보고</small></div>
+  </div>
+  <div class="grow"></div>
+  <div class="week-pill" id="weekChip" onclick="toggleWeekMode()" title="클릭하여 주차 표시 방식 변경">
+    <span class="dot"></span>
+    <span id="chipTitle">-</span>
+  </div>
+  <button class="icon-btn" onclick="toggleTheme()" title="테마 전환" id="themeBtn">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" id="themeIcon">
+      <path d="M21 13A9 9 0 0 1 11 3a7 7 0 1 0 10 10z"/>
+    </svg>
+  </button>
+  <div class="user-wrap" id="userWrap">
+    <button class="user-chip" id="userBtn" onclick="toggleUserDrop()">
+      <span class="ava">?</span>
+      <span class="uc-text"><span>로그인</span></span>
+    </button>
+    <div class="user-drop" id="userDrop">
+      <div class="user-drop-head">
+        <div class="ava md" id="userDropAvatar">-</div>
+        <div class="user-drop-name" id="userDropName">-</div>
+      </div>
+      <div class="user-drop-divider"></div>
+      <div class="user-drop-item" onclick="openSettings()">⚙️ 환경설정</div>
+    </div>
+  </div>
+  <button class="admin-pill" id="adminBtn" onclick="handleAdminBtn()" title="관리자 로그인" style="display:none">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="4" y="11" width="16" height="10" rx="2"/>
+      <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+    </svg>
+    <span>관리자</span>
+  </button>
+  <button class="icon-btn" id="logoutBtn" onclick="doLogout()" title="로그아웃" style="display:none">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  </button>
+</div>
+
+<!-- 신기능 안내 배너 (버전 변경 시 1회 노출) -->
+<div class="ver-banner" id="verBanner" style="display:none">
+  <span class="vb-emoji">✨</span>
+  <div class="vb-text">
+    <strong id="vbTitle">새 기능</strong>
+    <span id="vbSub"></span>
+  </div>
+  <button class="vb-cta" id="vbCta" onclick="onVerBannerCta()">자세히</button>
+  <button class="vb-close" onclick="dismissVerBanner()" aria-label="닫기">✕</button>
+</div>
+
+<!-- ══ 팀 선택 페이지 (URL에 ?team= 없을 때) — main UX 디자인 + 워크트리 teamList 호환 ID ══ -->
+<div class="page" id="pgTeamSelect">
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="brand-logo login-brand-logo"><img src="/static/img/app-icon.png" alt="logo"></div>
+        <div class="login-brand-txt">
+          <span class="login-brand-name" data-ol="{product}">Weekly Report</span>
+          <span class="login-brand-sub" data-ol="{team} 선택">팀 선택</span>
+        </div>
+      </div>
+      <div class="login-prompt">
+        <h2 data-ol="어느 {team}인가요? 👋">어느 팀인가요? 👋</h2>
+        <p data-ol="소속 {team:을} 선택하면 해당 {team}의 주간보고 화면으로 이동합니다.">소속 팀을 선택하면 해당 팀의 주간보고 화면으로 이동합니다.</p>
+      </div>
+      <div id="teamList" style="display:flex;flex-direction:column;gap:10px;margin-top:16px"></div>
+      <div id="teamPickerSysAdminSlot" style="display:none"></div>
+      <div class="login-foot" style="margin-top:24px">
+        <span class="faint app-ver"></span>
+        <span class="faint" data-ol="{copyright}"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 로그인 페이지 ══ -->
+<div class="page active" id="pgLogin">
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="brand-logo login-brand-logo"><img src="/static/img/app-icon.png" alt="logo"></div>
+        <div class="login-brand-txt">
+          <span class="login-brand-name" data-ol="{product}">Weekly Report</span>
+          <span class="login-brand-sub" id="loginBrandSub" style="transition:opacity .15s">주간보고</span>
+        </div>
+      </div>
+
+      <!-- Step 1: 팀원 카드 그리드 -->
+      <div id="loginStepSelect" class="fade-in">
+        <div class="login-prompt">
+          <h2>안녕하세요 👋</h2>
+          <p data-ol="이번 주 보고를 작성할 {member:을} 선택해주세요.">이번 주 보고를 작성할 팀원을 선택해주세요.</p>
+        </div>
+        <div id="memberGrid" class="member-grid stagger">
+          <!-- populateLoginSel() 에서 동적 렌더 -->
+        </div>
+      </div>
+
+      <!-- Step 2: PIN 입력 -->
+      <div id="loginStepPin" class="fade-in" style="display:none">
+        <button type="button" class="login-back" onclick="loginBackFromPin()">‹ 뒤로</button>
+        <div class="login-prompt">
+          <div class="ava lg" id="loginSelAvatar" style="background:linear-gradient(135deg,var(--brand-400),var(--brand-700))">-</div>
+          <h2 id="loginSelName">-</h2>
+          <p>4자리 PIN을 입력해주세요. <span class="faint">(처음이라면 자동 등록됩니다)</span></p>
+        </div>
+        <div class="pin-row">
+          <input class="pin-box" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="1" id="p0" oninput="pinMove(0)">
+          <input class="pin-box" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="1" id="p1" oninput="pinMove(1)">
+          <input class="pin-box" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="1" id="p2" oninput="pinMove(2)">
+          <input class="pin-box" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="1" id="p3" oninput="pinMove(3)" onkeydown="if(event.key==='Enter')doLogin()">
+        </div>
+        <div class="pin-error" id="pinError"></div>
+      </div>
+
+      <!-- 호환용 hidden select (auth.js doLogin이 이 값을 읽음) -->
+      <select id="loginSel" style="display:none"><option value="">-- 선택 --</option></select>
+
+      <div class="login-foot">
+        <span class="faint app-ver"></span>
+        <span class="faint" data-ol="{copyright}"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 사용자 페이지 ══ -->
+<div class="page" id="pgUser">
+  <div class="shell">
+    <!-- 일반 팀원용 기본 헤더 -->
+    <div class="page-head fade-up" id="userDefaultHead">
+      <div>
+        <h1 class="page-title">이번 주 보고</h1>
+        <div class="page-subtitle" id="pageSubtitle">-</div>
+      </div>
+      <div class="row-flex">
+        <div class="tabs-new" role="tablist">
+          <button class="tab-new active" onclick="uTab('write',this)">✏️ 보고 작성</button>
+          <button class="tab-new" onclick="uTab('history',this)">📂 내 이력</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 결재권자(팀장) 콘솔 헤더 — 현황/내보고/이력 일관 탭바. pgAdmin 헤더와 동일 구성으로 페이지 전환감 제거 -->
+    <div class="page-head fade-up" id="apvHeaderUser" style="display:none">
+      <div>
+        <h1 class="page-title" data-ol="{team} 보고 현황">팀 보고 현황</h1>
+        <div class="page-subtitle" data-ol="{team} 주간보고 열람 · AI 요약 · 내 보고 작성">팀 주간보고 열람 · AI 요약 · 내 보고 작성</div>
+      </div>
+      <div class="row-flex">
+        <div class="tabs-new" role="tablist">
+          <button class="tab-new" onclick="gotoApprover()">📊 현황</button>
+          <button class="tab-new" id="apvUserWriteTab" onclick="apvUserTab('write',this)">✍️ 내 보고 작성</button>
+          <button class="tab-new" id="apvUserHistTab" onclick="apvUserTab('history',this)">📂 과거 이력</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 호환용 hidden — 기존 JS가 이 ID를 채울 수 있어 유지 -->
+    <div id="bannerTitle" style="display:none"></div>
+    <div id="bannerSub" style="display:none"></div>
+    <div id="bannerStatus" style="display:none"></div>
+    <div id="deadlineInfo" style="display:none"></div>
+
+    <!-- 마감일자 임박 (24h 이내 자동 표시) -->
+    <div id="deadlineUrgent" class="deadline-urgent fade-up" style="display:none">
+      <span class="du-ico">⏰</span>
+      <div class="du-text">
+        <div class="du-title" id="duTitle">마감일자 임박</div>
+        <div class="du-sub" id="duSub">-</div>
+      </div>
+    </div>
+
+    <div id="tabWrite">
+      <div class="write-grid fade-up">
+        <div class="write-main">
+          <div id="userWeekWrapper" style="display:none;margin-bottom:12px;text-align:right">
+            <span style="font-size:13px;color:var(--text2);margin-right:8px">작성 주차 선택</span>
+            <select id="userWeekSel" class="select-new" onchange="changeWriteWeek()" style="display:inline-block;width:auto;padding:8px 12px"></select>
+          </div>
+          <!-- 최종 취합 (결재권자 전용) — 결재 상태가 첫 시야에 오도록 작성 폼 위에 배치 -->
+          <div class="fm-cta fm-cta-side" id="finalMergeCard" style="display:none" onclick="openFinalMerge()">
+            <div class="fm-cta-left">
+              <span class="fm-cta-ico">📋</span>
+              <div style="min-width:0">
+                <div class="fm-cta-title">최종 취합 <span class="fm-cta-badge">상부 보고용</span></div>
+                <div class="fm-cta-sub" data-ol="확정된 {member} 요약 + 본인 주간보고를 병합한 최종 보고서를 만듭니다.">확정된 팀원 요약 + 본인 주간보고를 병합한 최종 보고서를 만듭니다.</div>
+                <div class="fm-review-chip" id="fmCtaSideReview" style="display:none"></div>
+              </div>
+            </div>
+            <button class="btn-new sm primary fm-cta-btn">📋 최종 취합본 만들기</button>
+          </div>
+          <div id="reportForm"></div>
+        </div>
+
+        <aside class="write-side">
+          <!-- 사용자 정보 카드 -->
+          <div class="card sidekit">
+            <div class="card-body">
+              <div class="row-flex" style="margin-bottom:12px">
+                <div class="ava lg" id="sideAvatar">-</div>
+                <div>
+                  <div style="font-size:16px;font-weight:700;color:var(--text)" id="sideName">-</div>
+                  <div style="font-size:12px;color:var(--text2)" id="sideRole">-</div>
+                </div>
+              </div>
+              <div class="kit-row"><span>프로젝트</span><strong id="sideProject">-</strong></div>
+              <div class="kit-row"><span>이번 주차</span><strong id="sideWeek">-</strong></div>
+              <div class="kit-row"><span>제출 상태</span><strong id="sideStatus">-</strong></div>
+            </div>
+          </div>
+
+          <!-- AI 작성 도우미 -->
+          <div class="card ai-assist">
+            <div class="ai-assist-bg"></div>
+            <div class="card-body" style="position:relative">
+              <div class="row-flex" style="margin-bottom:10px">
+                <span class="ai-chip">✨ AI</span>
+                <div style="font-size:13px;font-weight:700;color:var(--text)">작성 도우미</div>
+              </div>
+              <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:12px">
+                <span data-ol="초안을 작성한 후 버튼을 누르면 명사형 종결, 구체적 수치 포함 등 {leader} 보고 기준으로 피드백해드려요.">초안을 작성한 후 버튼을 누르면 명사형 종결, 구체적 수치 포함 등 팀장 보고 기준으로 피드백해드려요.</span>
+              </div>
+              <button class="btn-new sm ghost" style="width:100%" onclick="requestAiAssist()" id="aiAssistBtn" disabled>✨ AI 피드백 받기</button>
+            </div>
+          </div>
+
+          <!-- (최종 취합 카드는 32차에서 작성 폼 상단으로 이동 — 결재 상태 가시성) -->
+
+          <!-- 나의 제출 현황 -->
+          <div class="card side-stats">
+            <div class="card-body">
+              <div class="tiny-label">나의 제출 현황</div>
+              <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">
+                <div style="font-size:28px;font-weight:800;letter-spacing:-.03em;line-height:1;color:var(--text)" id="submitCountMain">-<span style="font-size:16px;font-weight:600;color:var(--text2)" id="submitCountTotal"> / -</span></div>
+                <div style="font-size:11px;color:var(--success);font-weight:700">최근 5주</div>
+              </div>
+              <div class="stat-progress" style="margin-top:8px"><span id="submitProgressBar" style="width:0%"></span></div>
+              <div style="font-size:11px;color:var(--text2);margin-top:10px;line-height:1.6" id="submitDesc">로딩 중...</div>
+            </div>
+          </div>
+
+          <!-- 마감 안내 -->
+          <div class="card" id="sideDeadlineCard">
+            <div class="card-body">
+              <div class="tiny-label">마감 안내</div>
+              <div class="deadline-box" id="sideDeadlineBox" style="display:none">
+                <span class="ico">⏰</span>
+                <div style="flex:1">
+                  <div class="main" id="sideDeadlineMain">-</div>
+                  <div class="sub" id="sideDeadlineSub">-</div>
+                </div>
+              </div>
+              <div style="font-size:11px;color:var(--text2);line-height:1.6">
+                마감 후에도 관리자가 권한을 부여하면 수정할 수 있어요.
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <div id="tabHistory" style="display:none">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">내 이력</div>
+        </div>
+        <div id="historyList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 관리자 페이지 ══ -->
+<div class="page" id="pgAdmin">
+  <div class="shell">
+    <div class="page-head fade-up">
+      <div>
+        <h1 class="page-title" id="adminTitle">관리자 콘솔</h1>
+        <div class="page-subtitle" id="adminSubtitle" data-ol="{team} 주간보고 현황 · AI 요약 · 양식 관리">팀 주간보고 현황 · AI 요약 · 양식 관리</div>
+      </div>
+      <div class="row-flex" style="flex-wrap:wrap;justify-content:flex-end;row-gap:8px">
+        <div class="tabs-new" role="tablist">
+          <button class="tab-new active" id="tabBtnDash" onclick="aTab('dash',this)">📊 현황</button>
+          <button class="tab-new" id="tabBtnMembers" onclick="aTab('members',this)" data-ol="👥 {member} 관리">👥 팀원 관리</button>
+          <button class="tab-new" id="tabBtnSettings" onclick="aTab('settings',this);if(typeof populatePushTestSelect==='function')populatePushTestSelect()">📋 양식 설정</button>
+          <button class="tab-new" id="approverWriteBtn" style="display:none" onclick="goApproverWrite()">✍️ 내 보고 작성</button>
+          <button class="tab-new" id="approverHistoryBtn" style="display:none" onclick="goApproverHistory()">📂 과거 이력</button>
+        </div>
+        <!-- 현황 탭 전체(제출 현황·AI 요약·최종 취합)의 주차 컨텍스트 — 탭 옆 배치, 모바일선 아래 줄바꿈 (32차 A안) -->
+        <select id="adminWeekSel" class="select-new week-ctx-sel" onchange="renderDash()"></select>
+      </div>
+    </div>
+
+    <!-- 대시보드 -->
+    <div id="tabDash">
+      <!-- 보고받는 사람용 간소 요약 — KPI 4카드 대신 카드 한 장 (미제출은 hover/클릭 시 명단 툴팁) -->
+      <div id="apvDashSummary" class="fade-up" style="display:none;align-items:center;gap:8px;padding:15px 18px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);margin-bottom:16px;font-size:14.5px;color:var(--text)">
+        <span id="apvSummaryText" style="font-weight:600">-</span>
+      </div>
+      <div class="stats-new stagger fade-up">
+        <div class="stat-new">
+          <div class="stat-ic">👥</div>
+          <div class="stat-label" data-ol="전체 {member}">전체 팀원</div>
+          <div class="stat-value" id="stTotal">0</div>
+          <div class="stat-delta" data-ol="{team} 전원">팀 전원</div>
+        </div>
+        <div class="stat-new">
+          <div class="stat-ic success">✓</div>
+          <div class="stat-label">제출 완료</div>
+          <div class="stat-value"><span id="stDone">0</span><span class="faint" id="stDoneTotal"> / 0</span></div>
+          <div class="stat-progress" style="margin-top:10px"><span id="stRateBar" style="width:0%"></span></div>
+        </div>
+        <div class="stat-new">
+          <div class="stat-ic warning">📝</div>
+          <div class="stat-label">제출률</div>
+          <div class="stat-value" id="stRate">0%</div>
+          <div class="stat-delta">이번 주차 기준</div>
+        </div>
+        <div class="stat-new">
+          <div class="stat-ic danger">⏰</div>
+          <div class="stat-label">미제출</div>
+          <div class="stat-value" id="stMiss">0</div>
+          <div class="stat-delta" id="stMissNote">-</div>
+        </div>
+      </div>
+
+      <!-- 최종 취합 CTA (결재권자 전용) — 본인 보고 상태에 따라 가이드 문구 변경 -->
+      <div class="fm-cta fade-up" id="fmCtaBanner" style="display:none" onclick="openFinalMerge()">
+        <div class="fm-cta-left">
+          <span class="fm-cta-ico">📋</span>
+          <div style="min-width:0">
+            <div class="fm-cta-title">최종 취합 <span class="fm-cta-badge">상부 보고용</span></div>
+            <div class="fm-cta-sub" id="fmCtaSub" data-ol="확정된 {member} 요약 + 내 주간보고를 하나의 보고서로 병합합니다">확정된 팀원 요약 + 내 주간보고를 하나의 보고서로 병합합니다</div>
+            <div class="fm-review-chip" id="fmCtaReview" style="display:none"></div>
+          </div>
+        </div>
+        <button class="btn-new sm primary fm-cta-btn" id="fmCtaBtn">📋 최종 취합본 만들기</button>
+      </div>
+
+      <!-- 대시보드 2열: 좌측 AI 요약 / 우측 제출 현황 -->
+      <div class="dash-grid fade-up">
+        <!-- 좌측: 전체 팀 AI 요약 (기존 디자인 유지) -->
+        <div class="all-ai-box" id="allAiBox">
+          <div class="all-ai-title" onclick="toggleAllAi()" style="align-items: flex-start; padding-top: 10px; padding-bottom: 10px">
+            <span style="display:flex;align-items:center;height:32px;margin-top:-2px"><span data-ol="✨ 전체 {team} AI 요약&nbsp;">✨ 전체 팀 AI 요약&nbsp;</span><span style="font-size:10px;font-weight:400;color:var(--text2);margin-left:4px" data-ol="({leader} 보고용)">(팀장 보고용)</span></span>
+            <div style="display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap">
+              <div style="display:flex;flex-direction:column;gap:0">
+                <div class="ai-mode-toggle" onclick="event.stopPropagation()" style="display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:11px;flex-shrink:0;height:32px">
+                  <button type="button" id="aiModeMember" class="ai-mode-btn active" onclick="setAiMode('member')" style="width:62px;height:100%;background:var(--accent);color:#fff;border:none;cursor:pointer;white-space:nowrap;font-weight:600;padding:0" data-ol="{member}별">팀원별</button>
+                  <button type="button" id="aiModeProject" class="ai-mode-btn" onclick="setAiMode('project')" style="width:78px;height:100%;background:var(--surface2);color:var(--text2);border:none;cursor:pointer;white-space:nowrap;font-weight:600;border-left:1px solid var(--border);border-right:1px solid var(--border);padding:0">프로젝트별</button>
+                  <button type="button" id="aiModeTeam" class="ai-mode-btn" onclick="setAiMode('team')" style="width:52px;height:100%;background:var(--surface2);color:var(--text2);border:none;cursor:pointer;white-space:nowrap;font-weight:600;padding:0" data-ol="{team}별">팀별</button>
+                </div>
+                <button type="button" id="aiMemberSubMode" onclick="event.stopPropagation();toggleAiSubMode()" style="display:block;font-size:9px;width:62px;height:18px;line-height:16px;padding:0;background:var(--bg2);border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;color:var(--text2);cursor:pointer;font-weight:600;transition:all .2s">개인별</button>
+                <button type="button" id="aiProjSubMode" onclick="event.stopPropagation();toggleAiProjSubMode()" style="display:none;font-size:9px;width:78px;height:18px;line-height:16px;padding:0;margin-left:62px;background:var(--bg2);border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;color:var(--text2);cursor:pointer;font-weight:600;transition:all .2s">섹션형</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <button class="btn btn-sm btn-s" onclick="event.stopPropagation();copyAiSummary()" style="height:32px;background:var(--surface2);border-color:var(--border);white-space:nowrap;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0 12px">📋 복사</button>
+                <button class="btn btn-sm btn-s" onclick="event.stopPropagation();downloadAiSummary()" style="height:32px;background:var(--surface2);border-color:var(--border);white-space:nowrap;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0 12px">📥 .md</button>
+                <button class="btn btn-sm btn-s" onclick="event.stopPropagation();genAllSummary()" style="height:32px;white-space:nowrap;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0 12px">새로 생성</button>
+                <span id="allAiChev" style="font-size:11px;color:var(--text2);transition:transform .2s;height:32px;display:flex;align-items:center">▲</span>
+              </div>
+            </div>
+          </div>
+          <div class="all-ai-body" id="allAiBody">
+            <div class="md" id="allAiContent" style="color:var(--text3);padding-top:12px" data-ol='주차 선택 후 "새로 생성"을 클릭하세요 ({member}별 / 프로젝트별 토글로 요약 형식 선택)'>주차 선택 후 "새로 생성"을 클릭하세요 (팀원별 / 프로젝트별 토글로 요약 형식 선택)</div>
+          </div>
+        </div>
+
+        <!-- 우측: 제출 현황 카드 -->
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <div class="card-title">제출 현황</div>
+              <div class="card-sub" id="submitListSub">카드를 클릭하면 본문이 펼쳐집니다</div>
+            </div>
+            <div class="row-flex" style="gap:6px;flex-wrap:wrap">
+              <button class="btn-new ghost sm" onclick="copyAll()">📋 전체 복사</button>
+              <button class="btn-new ghost sm" onclick="exportTxt()">↓ 내보내기</button>
+            </div>
+          </div>
+          <div id="missArea" style="display:none"></div>
+          <div class="submit-list stagger" id="reportList"></div>
+        </div>
+      </div>
+
+      <!-- 운영 지표 카드 (접기/펼치기) -->
+      <div class="card fade-up" id="metricsCard" style="margin-top:20px">
+        <!-- 헤더: 제목 + 접기 chev. 컨트롤 버튼들은 별도 아래 행으로 분리해 모바일 줄바꿈 대참사 방지 -->
+        <div class="card-head" onclick="toggleMetricsPanel()" style="cursor:pointer;user-select:none">
+          <div>
+            <div class="card-title">📊 운영 처리량 추이</div>
+            <div class="card-sub">SOR / SOP / CHG 주차별 누적 건수</div>
+          </div>
+          <!-- 접기 chev — 초기 ▼ (패널 닫힌 상태와 매칭). toggleMetricsPanel 에서 회전 처리 -->
+          <span id="metricsChev" style="font-size:13px;color:var(--text3);transition:transform .25s;display:inline-block">▼</span>
+        </div>
+        <!-- 컨트롤 행 — 모바일에선 flex-wrap 으로 자연 줄바꿈. 위 구분선과 여백 확보 -->
+        <div id="metricsControls" style="display:none;padding:14px 16px 12px;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--border)" onclick="event.stopPropagation()">
+          <!-- 뷰 모드 토글 -->
+          <div style="display:inline-flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:11px;flex-shrink:0" id="metricsViewToggle">
+            <button id="metricsViewChart" onclick="setMetricsView('chart')" style="padding:6px 12px;background:var(--brand-600);color:#fff;border:none;cursor:pointer;font-weight:600">차트</button>
+            <button id="metricsViewCount" onclick="setMetricsView('count')" style="padding:6px 12px;background:var(--surface2);color:var(--text2);border:none;border-left:1px solid var(--border);cursor:pointer;font-weight:600">건수</button>
+          </div>
+          <!-- 데이터 탭 -->
+          <div style="display:inline-flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:11px;flex-shrink:0">
+            <button id="metricsTabTotal" onclick="setMetricsTab('total')" style="padding:6px 12px;background:var(--brand-600);color:#fff;border:none;cursor:pointer;font-weight:600" data-ol="{team} 전체">팀 전체</button>
+            <button id="metricsTabMember" onclick="setMetricsTab('member')" style="padding:6px 12px;background:var(--surface2);color:var(--text2);border:none;border-left:1px solid var(--border);cursor:pointer;font-weight:600" data-ol="{member}별">팀원별</button>
+          </div>
+          <!-- 주차 선택 -->
+          <select id="metricsWeeksSel" class="select-new" onchange="loadMetrics()" style="width:auto;padding:6px 10px;font-size:12px;flex-shrink:0">
+            <option value="8">최근 8주</option>
+            <option value="12">최근 12주</option>
+            <option value="16">최근 16주</option>
+          </select>
+        </div>
+        <!-- 패널 본문 (기본 접힘) -->
+        <div id="metricsBody" style="display:none">
+          <div style="position:relative;height:200px;padding:8px 4px 4px" id="metricsChartWrap">
+            <canvas id="metricsChart"></canvas>
+          </div>
+          <div id="metricsCountWrap" style="display:none;padding:8px 4px 12px;overflow-x:auto"></div>
+          <div id="metricsEmpty" style="display:none;text-align:center;padding:32px;color:var(--text3);font-size:13px">
+            운영(SOR/SOP/CHG) 데이터가 없습니다
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 팀원 관리 -->
+    <div id="tabMembers" style="display:none">
+      <!-- 과거 주차 권한 관리 (사용자 요청으로 팀원 추가보다 위로) -->
+      <div class="mgmt-card">
+        <div class="mgmt-hdr">
+          <span class="mgmt-title">⏳ 과거 주차 수정권한 관리</span>
+          <span style="font-size:12px;color:var(--text2)">부여된 특정 주차의 작성 권한을 조회하고 회수합니다. (권한 부여는 현황 탭에서 가능합니다)</span>
+        </div>
+        <div style="padding:14px 17px">
+          <div class="table-scroll">
+            <table class="mgmt" id="permTable">
+              <thead><tr>
+                <th style="white-space:nowrap; width:1%" data-ol="{member}">팀원</th>
+                <th style="white-space:nowrap; width:1%">허용 주차</th>
+                <th style="white-space:nowrap; width:1%">유효 기간</th>
+                <th style="white-space:nowrap; text-align:right">관리</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 팀원 추가 -->
+      <div class="mgmt-card">
+        <div class="mgmt-hdr">
+          <span class="mgmt-title" data-ol="➕ {member} 추가">➕ 팀원 추가</span>
+        </div>
+        <div style="padding:14px 17px">
+          <div class="add-member-row">
+            <input type="text" id="newMemberName" placeholder="이름 입력">
+            <select id="newMemberRole" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px">
+              <option value="etc">기타</option>
+              <option value="dev">개발</option>
+              <option value="ops">운영</option>
+            </select>
+            <select id="newMemberPosition" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px">
+              <option value="">직급 선택</option>
+              <option value="사원">사원</option>
+              <option value="대리">대리</option>
+              <option value="과장">과장</option>
+              <option value="차장">차장</option>
+              <option value="부장">부장</option>
+            </select>
+            <select id="newMemberProject" onchange="updateAddMemberPRoles()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px">
+              <option value="">프로젝트 선택</option>
+            </select>
+            <select id="newMemberSubRole" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px" disabled>
+              <option value="">---</option>
+            </select>
+            <button class="btn btn-p btn-sm" style="white-space:nowrap;flex-shrink:0;min-width:52px" onclick="addMember()">추가</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 역할 설정 -->
+      <div class="mgmt-card">
+        <div class="mgmt-hdr">
+          <span class="mgmt-title">⚙️ 역할 설정</span>
+          <span style="font-size:12px;color:var(--text2)">역할별 보고 양식이 달라집니다</span>
+        </div>
+        <div class="table-scroll">
+          <table class="mgmt" id="roleTable"></table>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
+        <button class="btn btn-p" onclick="saveRoles()">역할 저장</button>
+      </div>
+
+      <!-- PIN 관리 -->
+      <div class="mgmt-card">
+        <div class="mgmt-hdr">
+          <span class="mgmt-title">🔐 PIN 관리</span>
+          <span style="font-size:12px;color:var(--text2)">PIN 초기화 시 다음 로그인에서 재등록됩니다</span>
+        </div>
+        <div class="table-scroll">
+          <table class="mgmt" id="pinTable"></table>
+        </div>
+      </div>
+
+      <!-- 데이터 마이그레이션 -->
+      <div class="mgmt-card">
+        <div class="mgmt-hdr">
+          <span class="mgmt-title">📦 데이터 마이그레이션</span>
+          <span style="font-size:12px;color:var(--text2)">기존 localStorage 데이터를 서버로 이전</span>
+        </div>
+        <div style="padding:14px 17px">
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-s btn-sm" onclick="exportData()" style="flex:1">💾 서버 데이터 → JSON 내보내기</button>
+            <label class="btn btn-s btn-sm" style="flex:1;text-align:center;cursor:pointer">
+              📥 JSON → 서버 가져오기
+              <input type="file" accept=".json" onchange="importToServer(event)" style="display:none">
+            </label>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5">
+            기존 HTML 버전(v4.1)에서 사용하던 localStorage 데이터를 JSON으로 내보내고,<br>
+            해당 파일을 서버 DB로 가져올 수 있습니다. PIN은 자동으로 해시 변환됩니다.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 양식 설정 -->
+    <div id="tabSettings" style="display:none">
+      <div class="mgmt-card">
+        <div class="mgmt-hdr">
+          <span class="mgmt-title">⚙️ 동적 양식 및 옵션 설정</span>
+          <span style="font-size:12px;color:var(--text2)">주간보고 양식과 선택 옵션을 직관적으로 관리합니다.</span>
+        </div>
+        <div style="padding:14px 17px">
+          <!-- 상단 그리드: 프로젝트 및 Role 관리 (모바일 대응을 위해 1열 세로 배치) -->
+          <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 16px">
+            <!-- 프로젝트 관리 -->
+            <div class="s-section">
+              <div class="s-section-title">🚀 투입 프로젝트 목록 관리</div>
+              <div id="projTags" class="tag-container"></div>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="addProjInput" onkeyup="if(event.key==='Enter') addTag('proj')" placeholder="새 프로젝트 이름" style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:10px;font-size:13px">
+                <button class="btn btn-p btn-sm" onclick="addTag('proj')">추가</button>
+              </div>
+            </div>
+            <!-- 프로젝트 ROLE 관리 -->
+            <div class="s-section">
+              <div class="s-section-title">👔 프로젝트 ROLE 목록 관리</div>
+              <div id="pRoleTags" class="tag-container"></div>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="addPRoleInput" onkeyup="if(event.key==='Enter') addTag('pRole')" placeholder="새 ROLE 이름 (예: 설계자)" style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:10px;font-size:13px">
+                <button class="btn btn-p btn-sm" onclick="addTag('pRole')">추가</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 직군별 양식 관리 — PC 전용 (가로 폭 필요한 인라인 row 디자인이라 모바일에선 숨김) -->
+          <div class="s-section roles-editor-section" style="background:var(--surface); border-color:var(--border)">
+            <div class="s-section-title" style="font-size:16px; margin-bottom:20px">📝 직군별 보고 양식 상세 설정</div>
+            <div id="rolesEditor"></div>
+          </div>
+          <!-- 모바일 안내 (PC 양식 카드 대신 노출) -->
+          <div class="s-section roles-editor-mobile-notice" style="background:var(--surface); border-color:var(--border); display:none">
+            <div class="s-section-title" style="font-size:15px; margin-bottom:8px">📝 직군별 보고 양식 상세 설정</div>
+            <div style="font-size:13px;color:var(--text2);line-height:1.6;padding:14px;background:var(--bg2);border:1px dashed var(--border);border-radius:10px">
+              💡 양식 편집은 데스크탑 브라우저에서만 가능합니다. <br>
+              PC 로 접속 후 같은 메뉴에서 편집해주세요.
+            </div>
+          </div>
+          <style>
+            /* 모바일 (≤768px): PC 양식 편집 카드 숨기고 안내 카드 노출 */
+            @media (max-width: 768px) {
+              .roles-editor-section { display: none !important; }
+              .roles-editor-mobile-notice { display: block !important; }
+            }
+          </style>
+
+          <!-- AI 요약 프롬프트 — 팀별 추가 지침 (유형별 4종, 전역 시스템 프롬프트는 시스템 관리자 전용) -->
+          <div class="s-section" style="background:var(--surface); border-color:var(--border); margin-top:20px">
+            <div class="s-section-title" style="font-size:16px; margin-bottom:6px" data-ol="🤖 AI 요약 — {team}별 추가 지침">🤖 AI 요약 — 팀별 추가 지침</div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6">
+              <span data-ol="본 {team}의 AI 요약 유형별 추가 지침을 입력합니다. 전역 시스템 프롬프트(페르소나·기본 출력 형식)는 ">본 팀의 AI 요약 유형별 추가 지침을 입력합니다. 전역 시스템 프롬프트(페르소나·기본 출력 형식)는 </span><b>시스템 관리자</b>만 편집 가능하고,
+              아래에서 입력한 내용은 해당 유형 요약에 한해 전역 위에 덧붙여 적용됩니다. 비워두면 전역만 사용.
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <!-- 페르소나 (모든 유형 공통) -->
+              <details open>
+                <summary style="cursor:pointer;font-size:13px;font-weight:700;padding:8px 0">🎭 페르소나 / 작성 원칙 (모든 요약 공통)</summary>
+                <div style="margin-top:6px">
+                  <textarea id="aiExtraPersonaTxt" placeholder="예) 고객사 보고 톤 유지. 전문용어보다 평이한 표현 우선."
+                    style="width:100%;min-height:100px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:var(--text);resize:vertical"></textarea>
+                  <div style="display:flex;gap:8px;margin-top:6px;justify-content:flex-end">
+                    <button class="btn btn-s btn-sm" onclick="resetExtraPrompt('ai_team_extra_persona')">초기화</button>
+                    <button class="btn btn-p btn-sm" onclick="saveExtraPrompt('ai_team_extra_persona', 'aiExtraPersonaTxt')">💾 저장</button>
+                  </div>
+                </div>
+              </details>
+
+              <!-- 팀원별 요약 보강 -->
+              <details>
+                <summary style="cursor:pointer;font-size:13px;font-weight:700;padding:8px 0" data-ol="📋 {member}별 요약 보강">📋 팀원별 요약 보강</summary>
+                <div style="margin-top:6px">
+                  <textarea id="aiExtraMemberTxt" data-ol-attr="placeholder:예) 각 {member} 라인 끝에 이번 주 핵심 이슈 1줄 추가." placeholder="예) 각 팀원 라인 끝에 이번 주 핵심 이슈 1줄 추가."
+                    style="width:100%;min-height:100px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:var(--text);resize:vertical"></textarea>
+                  <div style="display:flex;gap:8px;margin-top:6px;justify-content:flex-end">
+                    <button class="btn btn-s btn-sm" onclick="resetExtraPrompt('ai_team_extra_member')">초기화</button>
+                    <button class="btn btn-p btn-sm" onclick="saveExtraPrompt('ai_team_extra_member', 'aiExtraMemberTxt')">💾 저장</button>
+                  </div>
+                </div>
+              </details>
+
+              <!-- 프로젝트별 요약 보강 -->
+              <details>
+                <summary style="cursor:pointer;font-size:13px;font-weight:700;padding:8px 0">🚀 프로젝트별 요약 보강</summary>
+                <div style="margin-top:6px">
+                  <textarea id="aiExtraProjectTxt" placeholder="예) 프로젝트별 일정 마일스톤 + 위험도 색상 표기 권장."
+                    style="width:100%;min-height:100px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:var(--text);resize:vertical"></textarea>
+                  <div style="display:flex;gap:8px;margin-top:6px;justify-content:flex-end">
+                    <button class="btn btn-s btn-sm" onclick="resetExtraPrompt('ai_team_extra_project')">초기화</button>
+                    <button class="btn btn-p btn-sm" onclick="saveExtraPrompt('ai_team_extra_project', 'aiExtraProjectTxt')">💾 저장</button>
+                  </div>
+                </div>
+              </details>
+
+              <!-- 팀 전체 통합 요약 보강 -->
+              <details>
+                <summary style="cursor:pointer;font-size:13px;font-weight:700;padding:8px 0" data-ol="📢 {team} 전체 통합 요약 보강">📢 팀 전체 통합 요약 보강</summary>
+                <div style="margin-top:6px">
+                  <textarea id="aiExtraTeamTxt" placeholder="예) 임원 보고용 톤. 결론·리스크·요청사항 3구획."
+                    style="width:100%;min-height:100px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:var(--text);resize:vertical"></textarea>
+                  <div style="display:flex;gap:8px;margin-top:6px;justify-content:flex-end">
+                    <button class="btn btn-s btn-sm" onclick="resetExtraPrompt('ai_team_extra_team')">초기화</button>
+                    <button class="btn btn-p btn-sm" onclick="saveExtraPrompt('ai_team_extra_team', 'aiExtraTeamTxt')">💾 저장</button>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <!-- 마감 설정 (동적 렌더링) -->
+          <div id="deadlineSettingsArea" style="margin-top:20px"></div>
+
+          <!-- 푸시 알림 테스트 + 진단 + 마감 알림 수동 트리거 -->
+          <div class="s-section" style="margin-top:20px">
+            <div class="s-section-title">🔔 푸시 알림 테스트 발송 · 진단</div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">
+              <span data-ol="푸시 알림이 정상 수신되는지 확인합니다. 앱을 설치하고 알림을 허용한 {member}에게만 발송됩니다.">푸시 알림이 정상 수신되는지 확인합니다. 앱을 설치하고 알림을 허용한 팀원에게만 발송됩니다.</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <select id="pushTestTarget" style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:10px;font-size:13px">
+                <option value="__all__" data-ol="👥 전체 {member}">👥 전체 팀원</option>
+              </select>
+              <button class="btn btn-p btn-sm" onclick="sendTestPush()">📤 테스트 발송</button>
+              <button class="btn btn-sm" style="background:var(--surface2);border:1px solid var(--border);color:var(--text)" onclick="loadPushDiagnostics()">🔍 진단</button>
+            </div>
+            <div id="pushTestResult" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
+            <div id="pushDiagnosticsArea" style="margin-top:10px;font-size:12px;color:var(--text2);display:none;padding:10px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;font-family:'JetBrains Mono',monospace;line-height:1.7;white-space:pre-wrap"></div>
+
+            <!-- 마감 알림 수동 트리거 -->
+            <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+              <div style="font-size:13px;font-weight:700;margin-bottom:6px">⏰ 마감 알림 즉시 발송 (수동)</div>
+              <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.5">
+                <span data-ol="매일 12:00 KST 자동 스케줄 외에 관리자가 직접 발송. 본인 {team}의 이번 주 미제출자에게만 발송됩니다.">매일 12:00 KST 자동 스케줄 외에 관리자가 직접 발송. 본인 팀의 이번 주 미제출자에게만 발송됩니다.</span>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-p btn-sm" onclick="sendDeadlinePushNow()" data-ol="⏰ 본인 {team} 마감 알림 발송">⏰ 본인 팀 마감 알림 발송</button>
+              </div>
+              <div id="deadlinePushResult" style="margin-top:8px;font-size:12px;color:var(--text2);white-space:pre-wrap"></div>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;margin-top:24px;gap:12px;align-items:center">
+            <span style="font-size:12px;color:var(--text3)">* 변경 사항은 하단 '설정 저장' 버튼을 눌러야 최종 반영됩니다.</span>
+            <button class="btn btn-p" style="padding:12px 24px" onclick="saveGlobalSettings()">✨ 모든 설정 저장</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 환경설정 모달 ══ -->
+<div class="modal-ov" id="settingsModal">
+  <div class="modal settings-modal">
+    <div class="modal-head-row">
+      <div class="modal-title" style="margin:0;padding:0;font-size:16px">⚙️ 환경설정</div>
+      <button class="modal-head-close" onclick="closeSettings()">✕</button>
+    </div>
+
+    <!-- ① 내 정보 -->
+    <div class="settings-section">
+      <div class="settings-section-title">👤 내 정보</div>
+      <div class="settings-info-grid">
+        <div class="settings-info-row"><span>이름</span><strong id="stgName">-</strong></div>
+        <div class="settings-info-row"><span>직급</span><strong id="stgPosition">-</strong></div>
+        <div class="settings-info-row"><span>직군</span><strong id="stgRole">-</strong></div>
+        <div class="settings-info-row"><span>프로젝트</span><strong id="stgProject">-</strong></div>
+        <div class="settings-info-row"><span>역할(ROLE)</span><strong id="stgSubRole">-</strong></div>
+      </div>
+    </div>
+
+    <!-- ①-2 아바타 꾸미기 -->
+    <div class="settings-section">
+      <div class="settings-section-title">🎨 아바타 꾸미기</div>
+      <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+        <div id="avatarPreview" class="ava" style="width:66px;height:66px;font-size:26px;flex-shrink:0">?</div>
+        <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <label class="btn-new sm ghost" style="cursor:pointer;margin:0">📷 사진 업로드
+              <input type="file" id="avatarFile" accept="image/*" style="display:none" onchange="onAvatarFile(event)">
+            </label>
+            <button class="btn-new sm ghost" onclick="clearAvatarPhoto()">사진 제거</button>
+          </div>
+
+          <!-- 배경 프리셋 (원클릭 색·그라데이션) -->
+          <div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:6px">배경 프리셋 (클릭하면 바로 적용)</div>
+            <div id="avatarPresets" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+          </div>
+
+          <!-- 효과 (애니메이션) -->
+          <div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:6px">효과 (애니메이션)</div>
+            <div id="avatarEffects" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+          </div>
+
+          <!-- 모양 -->
+          <div style="display:flex;align-items:center;gap:16px;font-size:13px;color:var(--text2)">
+            <span>모양</span>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="avatarShape" value="circle" onchange="onAvatarShape('circle')"> 원형</label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="avatarShape" value="rounded" onchange="onAvatarShape('rounded')"> 둥근 사각형</label>
+          </div>
+
+          <!-- 원 안 글자 -->
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)">원 안 글자
+            <input type="text" id="avatarInitial" maxlength="4" oninput="onAvatarInitial()" placeholder="기본: 이름 첫 글자 (최대 4자)" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:13px">
+          </label>
+          <div style="font-size:11px;color:var(--text3);line-height:1.5">사진을 올리면 사진이 우선 표시돼요. 사진이 없을 때 효과·배경색·글자가 적용됩니다.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-new sm primary" onclick="saveAvatar()">저장</button>
+            <button class="btn-new sm ghost" onclick="resetAvatar()">기본값으로</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ② 이번 주 현황 -->
+    <div class="settings-section">
+      <div class="settings-section-title">📋 이번 주 현황</div>
+      <div class="settings-week-status">
+        <span class="settings-status-badge pending" id="stgSubmitBadge">⏳ 미제출</span>
+        <span style="font-size:13px;color:var(--text2)" id="stgDeadlineText">마감 정보 없음</span>
+      </div>
+    </div>
+
+    <!-- ③ 디스플레이 -->
+    <div class="settings-section">
+      <div class="settings-section-title">🎨 디스플레이</div>
+      <div class="settings-noti-row">
+        <div class="settings-noti-label">
+          다크 모드
+          <span class="settings-noti-sub">화면 색상 테마를 변경합니다</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="stgDarkMode" onchange="toggleThemeFromSettings(this)">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="settings-noti-row" style="margin-top:12px">
+        <div class="settings-noti-label">
+          주차 표시 방식
+          <span class="settings-noti-sub" id="stgWeekModeLabel">ISO 주차 (예: 26년 19주차)</span>
+        </div>
+        <button class="btn-new ghost sm" onclick="toggleWeekModeFromSettings()">변경</button>
+      </div>
+    </div>
+
+    <!-- ④ 알림 설정 — PWA(앱 설치) 환경에서만 노출 (브라우저에서는 알림 권한 불안정) -->
+    <div class="settings-section" id="stgNotiSection" style="display:none">
+      <div class="settings-section-title">🔔 알림 설정</div>
+      <div id="stgNotiDenied" style="display:none;font-size:12px;color:var(--danger,#e53e3e);margin-bottom:10px;padding:8px 12px;background:rgba(229,62,62,.08);border-radius:8px;line-height:1.5">
+        ⛔ 알림이 차단되어 있습니다. 브라우저 주소창 왼쪽 🔒 아이콘 → 사이트 설정에서 허용해주세요.
+      </div>
+      <div class="settings-noti-row">
+        <div class="settings-noti-label">
+          푸시 알림 받기
+          <span class="settings-noti-sub">마감 전날 알림 · 보완 요청 알림을 받습니다</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="stgNotiEnabled" onchange="togglePushSubscription(this)">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <!-- 권한 default 인데 자동 prompt 못 받은 사용자를 위한 명시 트리거 -->
+      <button id="stgNotiManualEnable" class="btn-new ghost" style="width:100%;margin-top:10px;display:none;font-size:13px" onclick="manualEnableNotifications()">
+        🔔 알림 권한 다시 요청하기
+      </button>
+    </div>
+
+    <!-- 알림 설정이 숨겨졌을 때의 안내 (PWA 미설치 사용자에게) -->
+    <div class="settings-section" id="stgNotiHidden" style="display:none">
+      <div class="settings-section-title">🔔 알림 설정</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6;padding:10px 12px;background:var(--bg2);border:1px dashed var(--border);border-radius:8px">
+        앱으로 설치해서 열면 푸시 알림을 받을 수 있습니다.<br>
+        아래 <b>앱 설치</b> 섹션에서 홈 화면에 추가해 주세요.
+      </div>
+    </div>
+
+    <!-- ⑤ 앱 설치 -->
+    <div class="settings-section">
+      <div class="settings-section-title">📱 앱 설치</div>
+      <!-- Android / Chrome -->
+      <div id="stgInstallAndroid">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span id="stgPwaStatusDot">⚪</span>
+          <span style="font-size:13px;color:var(--text2)" id="stgPwaStatusText">설치 상태 확인 중...</span>
+        </div>
+        <!-- 이미 설치된 사용자에게 표시 -->
+        <div id="stgInstallAndroidDone" style="display:none;padding:12px;background:var(--bg2);border:1px dashed var(--border);border-radius:10px;font-size:13px;color:var(--text2);text-align:center">
+          ✅ 이미 설치된 앱입니다
+        </div>
+        <!-- 설치 안내 (단계 가이드) — iOS 와 동일한 UX 로 통일 -->
+        <div id="stgInstallAndroidGuide" class="ios-guide" style="display:none">
+          <div class="ios-guide-step"><span class="ios-step-num">1</span> Chrome 우측 상단 <strong>⋮ 메뉴</strong>를 탭하세요</div>
+          <div class="ios-guide-step"><span class="ios-step-num">2</span> <strong>홈 화면에 추가</strong> 또는 <strong>앱 설치</strong>를 선택하세요</div>
+          <div class="ios-guide-step"><span class="ios-step-num">3</span> 표시되는 <strong>추가</strong> 또는 <strong>설치</strong>를 탭하면 완료!</div>
+        </div>
+        <!-- 관리자 OFF 시 -->
+        <div id="stgInstallAndroidDisabled" style="display:none;padding:14px;background:var(--bg2);border:1px dashed var(--border);border-radius:10px;font-size:13px;color:var(--text2);line-height:1.6">
+          🚫 현재 앱 설치 기능이 일시 중지되었습니다.<br>관리자에게 문의해주세요.
+        </div>
+      </div>
+      <!-- iOS -->
+      <div id="stgInstallIOS" style="display:none">
+        <div class="ios-guide">
+          <div class="ios-guide-step"><span class="ios-step-num">1</span> Safari 하단의 <strong>공유 버튼 (□↑)</strong>을 탭하세요</div>
+          <div class="ios-guide-step"><span class="ios-step-num">2</span> 스크롤하여 <strong>홈 화면에 추가</strong>를 선택하세요</div>
+          <div class="ios-guide-step"><span class="ios-step-num">3</span> 우측 상단 <strong>추가</strong>를 탭하면 완료!</div>
+          <div class="ios-note">⚠️ iOS 알림은 홈 화면 앱으로 설치 후 Safari → 사이트 설정에서 알림을 허용해야 합니다. (iOS 16.4 이상)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-btns" style="margin-top:4px">
+      <button class="btn-new primary" onclick="closeSettings()" style="flex:1">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 앱 설치 유도 팝업 (모바일 바텀 시트) ══ -->
+<div class="ip-overlay" id="installPromo" onclick="onInstallPromoOverlayClick(event)">
+  <div class="ip-sheet" onclick="event.stopPropagation()">
+    <div class="ip-handle"></div>
+    <div class="ip-body">
+      <div class="ip-icon">📲</div>
+      <div class="ip-title">홈 화면에 앱으로 추가하기</div>
+      <div class="ip-desc">앱으로 설치하면 더 빠르게 열고,<br>마감·보완 요청 알림도 받을 수 있어요.</div>
+      <!-- iOS 단계 가이드 -->
+      <div id="ipIOS" style="display:none">
+        <div class="ip-ios-steps">
+          <div class="ip-ios-step"><span class="ip-step-num">1</span>Safari 하단 <strong>공유 (□↑)</strong> 버튼을 탭하세요</div>
+          <div class="ip-ios-step"><span class="ip-step-num">2</span>목록에서 <strong>홈 화면에 추가</strong>를 선택하세요</div>
+          <div class="ip-ios-step"><span class="ip-step-num">3</span>우측 상단 <strong>추가</strong>를 탭하면 완료!</div>
+        </div>
+      </div>
+    </div>
+    <!-- Android/Chrome: 단계 가이드 (iOS 와 동일 UX 로 통일 — Chrome 의 prompt() API 가 silent stuck 되는 케이스 회피) -->
+    <div id="ipAndroid" style="display:none">
+      <div class="ip-ios-steps">
+        <div class="ip-ios-step"><span class="ip-step-num">1</span>Chrome 우측 상단 <strong>⋮ 메뉴</strong>를 탭하세요</div>
+        <div class="ip-ios-step"><span class="ip-step-num">2</span><strong>홈 화면에 추가</strong> 또는 <strong>앱 설치</strong>를 선택하세요</div>
+        <div class="ip-ios-step"><span class="ip-step-num">3</span>표시되는 <strong>추가</strong> 또는 <strong>설치</strong>를 탭하면 완료!</div>
+      </div>
+    </div>
+    <div class="ip-actions">
+      <div class="ip-dismiss-row">
+        <button class="ip-btn-later" onclick="dismissInstallPromo('later')">다음에 할게요</button>
+        <span class="ip-divider">|</span>
+        <button class="ip-btn-never" onclick="dismissInstallPromo('never')">다시 보지 않기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 시스템 관리자 패널 ══ -->
+<!-- 그룹장(상위조직장) 콘솔 — 유닛장들이 '보고'한 최종 취합본 열람 -->
+<div class="page" id="pgDivision">
+  <div class="shell">
+    <div class="page-head fade-up">
+      <div>
+        <h1 class="page-title" id="dhTitle">그룹 보고 현황</h1>
+        <div class="page-subtitle" id="dhSubtitle">유닛별 최종 보고 열람</div>
+      </div>
+      <div class="row-flex" style="gap:8px;flex-wrap:wrap">
+        <select id="dhWeekSel" class="select-new" onchange="renderDivisionDash()" style="display:inline-block;width:auto;padding:7px 12px;font-size:12px"></select>
+        <button class="btn-new ghost sm" id="dhMyUnitBtn" style="display:none" onclick="gotoApprover()">📊 유닛 보고 현황</button>
+        <button class="btn-new ghost sm" id="dhMyWriteBtn" style="display:none" onclick="apvUserTab('write')">✍️ 내 보고 작성</button>
+      </div>
+    </div>
+    <div id="dhContent" class="fade-up"></div>
+  </div>
+</div>
+
+<div class="page" id="pgSystemAdmin">
+  <div class="shell">
+    <div class="page-head fade-up">
+      <div>
+        <h1 class="page-title">⚙️ 시스템 관리자</h1>
+        <div class="page-subtitle">전사 조직 · AI 프롬프트 · 시스템 설정</div>
+      </div>
+      <div class="row-flex">
+        <div class="tabs-new" role="tablist">
+          <button class="tab-new active" onclick="saTab('stats',this)">📊 전사 현황</button>
+          <button class="tab-new" onclick="saTab('org',this)">🏢 조직 관리</button>
+          <button class="tab-new" onclick="saTab('prompts',this)">✨ 프롬프트</button>
+          <button class="tab-new" onclick="saTab('system',this)">🔧 시스템 설정</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 전사 현황 탭 -->
+    <div id="saTabStats">
+      <div class="stats-new stagger fade-up" id="saStatsCards"></div>
+      <div class="card fade-up" style="margin-top:16px">
+        <div class="card-head">
+          <div class="card-title" data-ol="{team}별 이번 주 제출 현황">팀별 이번 주 제출 현황</div>
+          <span class="faint" id="saWeekLabel">-</span>
+        </div>
+        <div id="saTeamStatsList" style="padding:0 4px 8px"></div>
+      </div>
+    </div>
+
+    <!-- 조직 관리 탭 -->
+    <div id="saTabOrg" style="display:none">
+      <!-- 전사 구성원 관리 (31차) — 입사·퇴사·인사이동·겸직·PIN 단일 창구 -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-head">
+          <div class="card-title">👥 전사 <span data-ol="{member}">구성원</span> 관리</div>
+          <span class="faint" style="font-size:12px">입사 · 퇴사 · 인사이동 · 겸직 · PIN</span>
+        </div>
+        <div style="padding:8px 20px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <p class="faint" style="font-size:12px;margin:0;line-height:1.6;flex:1 1 320px">
+            전 조직의 구성원을 한 화면에서 조회·검색하고, 여러 명을 선택해 <b>일괄 인사조치</b>합니다.
+            <span style="color:var(--text3)">퇴사 처리해도 작성한 주간보고 이력은 그대로 보존됩니다.</span>
+          </p>
+          <button class="btn-new" style="flex-shrink:0" onclick="openMemberMaster()">👥 전사 구성원 관리 열기</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <!-- 본부 관리 -->
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title" data-ol="{division} 관리">본부 관리</div>
+            <button class="btn-new sm" onclick="openSaDivisionForm()" data-ol="+ {division} 추가">+ 본부 추가</button>
+          </div>
+          <div id="saDivisionList" style="padding:0 4px 8px"></div>
+        </div>
+        <!-- 팀 관리 -->
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title" data-ol="{team} 관리">팀 관리</div>
+            <button class="btn-new sm" onclick="openSaTeamForm()" data-ol="+ {team} 추가">+ 팀 추가</button>
+          </div>
+          <div id="saTeamList" style="padding:0 4px 8px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 프롬프트 관리 탭 — admin 페이지의 details/summary 패턴과 동일 -->
+    <div id="saTabPrompts" style="display:none">
+      <div class="card fade-up">
+        <div class="card-head">
+          <div class="card-title">🤖 AI 프롬프트 설정</div>
+          <span class="faint" style="font-size:12px">전역 적용 · 비워두고 저장하면 시스템 기본값으로 복원</span>
+        </div>
+        <div style="padding:0 20px 20px">
+          <p class="faint" style="font-size:12px;margin:8px 0 16px;line-height:1.6">
+            AI에게 어떤 페르소나(역할/배경)와 출력 형식으로 요약을 시킬지 직접 편집할 수 있습니다.<br>
+            각 항목 클릭하면 펼쳐집니다.
+          </p>
+
+          <div style="display:flex;flex-direction:column;gap:10px">
+
+            <details>
+              <summary style="cursor:pointer;font-size:13px;font-weight:700;padding:8px 0">🎭 페르소나 / 공통 시스템 프롬프트</summary>
+              <div style="margin-top:8px">
+                <textarea id="saPrompt_ai_persona" style="width:100%;min-height:240px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:var(--text);resize:vertical"></textarea>
+                <div style="display:flex;gap:8px;margin-top:6px">
+                  <button class="btn-new sm" onclick="saveSaGlobalPrompt('ai_persona')">💾 저장</button>
+                  <button class="btn-new sm ghost" onclick="resetSaGlobalPrompt('ai_persona')">기본값 복원</button>
+                </div>
+              </div>
+            </details>
+
+            <details>
+              <summary style="cursor:pointer;font-size:13px;font-weight:700;padding:8px 0">🪄 AI 작성 도우미</summary>
+              <div style="margin-top:8px">
+                <textarea id="saPrompt_ai_assist_prompt" style="width:100%;min-height:200px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:var(--text);resize:vertical"></textarea>
+                <div style="display:flex;gap:8px;margin-top:6px">
+                  <button class="btn-new sm" onclick="saveSaGlobalPrompt('ai_assist_prompt')">💾 저장</button>
+                  <button class="btn-new sm ghost" onclick="resetSaGlobalPrompt('ai_assist_prompt')">기본값 복원</button>
+                </div>
+              </div>
+            </details>
+
+            <details>
+              <summary style="cursor:pointer;font-size:13px;font-weight:700;padding:8px 0" data-ol="📋 {member}별 요약 출력 형식">📋 팀원별 요약 출력 형식</summary>
+              <div style="margin-top:8px">
+                <div style="display:flex;gap:4px;margin-bottom:8px">
+                  <button type="button" id="saMemberPromptIndBtn" onclick="saSwitchMemberMode('individual')" style="font-size:11px;padding:4px 10px;background:var(--accent);color:#fff;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-weight:600">개인별</button>
+                  <button type="button" id="saMemberPromptGrpBtn" onclick="saSwitchMemberMode('group')" style="font-size:11px;padding:4px 10px;background:var(--bg2);color:var(--text2);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-weight:600">그룹화</button>
+                </div>
+                <textarea id="saMemberPromptTxt" style="width:100%;min-height:200px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:var(--text);resize:vertical"></textarea>
+                <div style="display:flex;gap:8px;margin-top:6px">
+                  <button class="btn-new sm" onclick="saveSaMemberPrompt()">💾 저장</button>
+                  <button class="btn-new sm ghost" onclick="resetSaMemberPrompt()">기본값 복원</button>
+                </div>
+              </div>
+            </details>
+
+            <details>
+              <summary style="cursor:pointer;font-size:13px;font-weight:700;padding:8px 0">🚀 프로젝트별 요약 출력 형식</summary>
+              <div style="margin-top:8px">
+                <textarea id="saPrompt_ai_format_project" style="width:100%;min-height:200px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:var(--text);resize:vertical"></textarea>
+                <div style="display:flex;gap:8px;margin-top:6px">
+                  <button class="btn-new sm" onclick="saveSaGlobalPrompt('ai_format_project')">💾 저장</button>
+                  <button class="btn-new sm ghost" onclick="resetSaGlobalPrompt('ai_format_project')">기본값 복원</button>
+                </div>
+              </div>
+            </details>
+
+            <details>
+              <summary style="cursor:pointer;font-size:13px;font-weight:700;padding:8px 0" data-ol="📢 {team} 전체 통합 요약 출력 형식">📢 팀 전체 통합 요약 출력 형식</summary>
+              <div style="margin-top:8px">
+                <textarea id="saPrompt_ai_format_team" style="width:100%;min-height:200px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:var(--text);resize:vertical"></textarea>
+                <div style="display:flex;gap:8px;margin-top:6px">
+                  <button class="btn-new sm" onclick="saveSaGlobalPrompt('ai_format_team')">💾 저장</button>
+                  <button class="btn-new sm ghost" onclick="resetSaGlobalPrompt('ai_format_team')">기본값 복원</button>
+                </div>
+              </div>
+            </details>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- 팀별 추가 프롬프트 -->
+      <div class="card fade-up" style="margin-top:16px">
+        <div class="card-head">
+          <div class="card-title" data-ol="{team}별 추가 프롬프트">팀별 추가 프롬프트</div>
+          <span class="faint" style="font-size:12px" data-ol="각 {team:이} 등록한 추가 컨텍스트 (시스템 관리자가 편집 가능)">각 팀이 등록한 추가 컨텍스트 (시스템 관리자가 편집 가능)</span>
+        </div>
+        <div id="saTeamPromptList" style="padding:0 20px 20px"></div>
+      </div>
+    </div>
+
+    <!-- 시스템 설정 탭 -->
+    <div id="saTabSystem" style="display:none">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+
+        <!-- ═══ 멀티팀 운영 (좌, 전체 폭 1) — 멀티팀 관련 4가지 설정 일괄 저장 ═══ -->
+        <div class="card" style="grid-column:1 / -1">
+          <div class="card-head">
+            <div class="card-title" data-ol="🏢 멀티{team} 운영 설정">🏢 멀티팀 운영 설정</div>
+            <span class="faint" style="font-size:12px" data-ol="멀티{team} 활성화 / 기본{team} / {team} 선택 화면 노출 항목 — 하단 저장 버튼으로 일괄 적용">멀티팀 활성화 / 기본팀 / 팀 선택 화면 노출 항목 — 하단 저장 버튼으로 일괄 적용</span>
+          </div>
+          <div style="padding:8px 20px 20px;display:grid;grid-template-columns:1fr 1fr;gap:18px 22px">
+
+            <!-- 1. 멀티팀 토글 -->
+            <div class="field-new" style="padding:0">
+              <label class="label-new" style="font-size:14px;font-weight:700" data-ol="① 멀티{team} 기능">① 멀티팀 기능</label>
+              <p class="faint" style="font-size:12px;margin:4px 0 10px;line-height:1.5">
+                <span data-ol="활성화 시 루트(">활성화 시 루트(</span><code>/</code><span data-ol=") 접속에서 {division}/{team} 선택 화면이 노출됩니다.">) 접속에서 본부/팀 선택 화면이 노출됩니다.</span><br>
+                <span data-ol="비활성화 시 아래 &quot;기본{team}&quot;으로 바로 진입합니다.">비활성화 시 아래 "기본팀"으로 바로 진입합니다.</span>
+              </p>
+              <label style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
+                <input type="checkbox" id="saMultiTeamToggle" style="margin:0">
+                <span data-ol="{team} 선택 화면 노출">팀 선택 화면 노출</span>
+              </label>
+            </div>
+
+            <!-- 2. 기본팀 -->
+            <div class="field-new" style="padding:0">
+              <label class="label-new" style="font-size:14px;font-weight:700" data-ol="② 기본{team}">② 기본팀</label>
+              <p class="faint" style="font-size:12px;margin:4px 0 10px;line-height:1.5">
+                <span>사용자가 </span><code>?team=</code><span data-ol=" 파라미터 없이 접속할 때 자동 진입할 {team}."> 파라미터 없이 접속할 때 자동 진입할 팀.</span><br>
+                <span data-ol="멀티{team} OFF 일 때도 사용됩니다.">멀티팀 OFF 일 때도 사용됩니다.</span>
+              </p>
+              <select id="saDefaultTeamSelect" class="input-new"></select>
+            </div>
+
+            <!-- 3. 노출 본부 -->
+            <div class="field-new" style="padding:0">
+              <label class="label-new" style="font-size:14px;font-weight:700" data-ol="③ {team} 선택 화면 — 노출 {division}">③ 팀 선택 화면 — 노출 본부</label>
+              <p class="faint" style="font-size:12px;margin:4px 0 10px;line-height:1.5">
+                <span data-ol="체크된 {division}만 외부 사용자에게 보입니다. ">체크된 본부만 외부 사용자에게 보입니다. </span><b>아무것도 체크 안 하면 모두 노출.</b>
+              </p>
+              <div id="saVisibleDivisions" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg2)"></div>
+            </div>
+
+            <!-- 4. 노출 팀 -->
+            <div class="field-new" style="padding:0">
+              <label class="label-new" style="font-size:14px;font-weight:700" data-ol="④ {team} 선택 화면 — 노출 {team}">④ 팀 선택 화면 — 노출 팀</label>
+              <p class="faint" style="font-size:12px;margin:4px 0 10px;line-height:1.5">
+                <span data-ol="체크된 {team}만 외부 사용자에게 보입니다. ">체크된 팀만 외부 사용자에게 보입니다. </span><b>아무것도 체크 안 하면 모두 노출.</b>
+              </p>
+              <div id="saVisibleTeams" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg2)"></div>
+            </div>
+
+            <!-- 5. PWA 앱 설치 기능 -->
+            <div class="field-new" style="padding:0">
+              <label class="label-new" style="font-size:14px;font-weight:700">⑤ PWA 앱 설치 기능</label>
+              <p class="faint" style="font-size:12px;margin:4px 0 10px;line-height:1.5">
+                <b>OFF</b> 시 사용자에게 표시되는 설치 유도 팝업 + 환경설정 모달의 설치 버튼이 비활성화됩니다.<br>
+                앱 기능 테스트 중일 때 일반 사용자가 PWA 설치 못 하게 차단할 때 사용.<br>
+                <span style="color:var(--text3)">※ 이미 설치된 PWA 는 영향 없음 (계속 사용 가능)</span>
+              </p>
+              <label style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
+                <input type="checkbox" id="saPwaInstallToggle" style="margin:0" checked>
+                <span>앱 설치 허용</span>
+              </label>
+            </div>
+
+            <!-- 일괄 저장 푸터 (전체 폭) -->
+            <div style="grid-column:1 / -1;border-top:1px solid var(--border);padding-top:14px;margin-top:4px;display:flex;align-items:center;gap:12px">
+              <span id="saMtDirtyMark" class="faint" style="font-size:12px;flex:1">변경하면 이 영역이 저장 대상이 됩니다.</span>
+              <button class="btn-new sm ghost" id="saMtReset" onclick="saMultiTeamReset()">되돌리기</button>
+              <button class="btn-new sm primary" id="saMtSave" onclick="saMultiTeamSave()">💾 변경사항 저장</button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- 신기능 안내 배너 제어 (v3.1.0) -->
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">📢 신기능 안내 배너</div>
+            <span class="faint" style="font-size:12px">콘텐츠 편집 / 재노출</span>
+          </div>
+          <div style="padding:8px 20px 20px;display:flex;flex-direction:column;gap:12px">
+            <p class="faint" style="font-size:12px;margin:0;line-height:1.5">
+              상단 배너 콘텐츠를 직접 작성하고, 이미 닫은 사용자에게도 다시 한 번 표시할 수 있습니다.<br>
+              <b>편집 OFF</b> 시 코드의 <code>APP_VER_NOTES</code> 기본값이 사용됩니다.
+            </p>
+
+            <label style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);width:fit-content">
+              <input type="checkbox" id="saBannerEnabled" style="margin:0">
+              <span>배너 콘텐츠 직접 편집</span>
+            </label>
+
+            <!-- 코드 기본 안내 (APP_VER_NOTES) 에서 불러오기 -->
+            <div style="display:flex;gap:8px;align-items:center;padding:8px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:8px">
+              <span class="faint" style="font-size:12px">코드 기본 안내 불러오기:</span>
+              <select id="saBannerLoadDefault" class="select-new" style="flex:1;min-width:0"></select>
+              <button class="btn-new sm ghost" onclick="saBannerLoadDefault()">📋 불러오기</button>
+            </div>
+
+            <div id="saBannerForm" style="display:none;flex-direction:column;gap:8px">
+              <div class="field-new" style="padding:0">
+                <label class="label-new" style="font-size:12px">버전 라벨 (참고용)</label>
+                <input type="text" id="saBannerVersion" class="input-new" placeholder="예: 3.1.0">
+              </div>
+              <div class="field-new" style="padding:0">
+                <label class="label-new" style="font-size:12px">노출 대상</label>
+                <select id="saBannerAudience" class="select-new">
+                  <option value="all">전체 사용자 (비로그인 포함)</option>
+                  <option value="member" data-ol="일반 {member}만 (관리자 제외)">일반 팀원만 (관리자 제외)</option>
+                  <option value="admin" data-ol="관리자 ({team}+시스템)">관리자 (팀+시스템)</option>
+                  <option value="system_admin">시스템 관리자만</option>
+                </select>
+              </div>
+              <div class="field-new" style="padding:0">
+                <label class="label-new" style="font-size:12px">제목</label>
+                <input type="text" id="saBannerTitle" class="input-new" placeholder="예: ✨ v3.1 — 새 기능 안내">
+              </div>
+              <div class="field-new" style="padding:0">
+                <label class="label-new" style="font-size:12px">부제</label>
+                <input type="text" id="saBannerSub" class="input-new" placeholder="한 줄 안내 문구">
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div class="field-new" style="padding:0">
+                  <label class="label-new" style="font-size:12px">CTA 버튼 라벨 (선택)</label>
+                  <input type="text" id="saBannerCtaText" class="input-new" placeholder="예: ⚙️ 설정 열기">
+                </div>
+                <div class="field-new" style="padding:0">
+                  <label class="label-new" style="font-size:12px">CTA 동작</label>
+                  <select id="saBannerCtaAction" class="select-new">
+                    <option value="">(없음)</option>
+                    <option value="openSettings">환경설정 열기</option>
+                    <option value="showInstallPromo">앱 설치 팝업</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:8px;border-top:1px solid var(--border);padding-top:10px">
+              <button class="btn-new sm ghost" onclick="saBannerSave()">💾 저장</button>
+              <button class="btn-new sm primary" onclick="saBannerRepublish()" title="이미 닫은 사용자에게도 한 번 더 표시">🔁 강제 재노출</button>
+            </div>
+            <div id="saBannerStatus" class="faint" style="font-size:11px"></div>
+          </div>
+        </div>
+
+        <!-- 데이터 관리 -->
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">💾 데이터 관리</div>
+            <span class="faint" style="font-size:12px">백업·복원</span>
+          </div>
+          <div style="padding:8px 20px 20px;display:flex;flex-direction:column;gap:10px">
+            <p class="faint" style="font-size:12px;margin:0;line-height:1.5">
+              <span data-ol="전체 {team}의 멤버·보고·설정 데이터를 JSON 파일로 백업합니다.">전체 팀의 멤버·보고·설정 데이터를 JSON 파일로 백업합니다.</span>
+            </p>
+            <button class="btn-new ghost" onclick="exportAllData()">📥 전체 데이터 내보내기</button>
+          </div>
+        </div>
+
+        <!-- 조직도 CSV — 내려받아 엑셀로 편집 후 업로드해 일괄 반영 -->
+        <div class="card" style="grid-column:1 / -1">
+          <div class="card-head">
+            <div class="card-title">📋 조직도 일괄 편집 (CSV)</div>
+            <span class="faint" style="font-size:12px">그룹 · 유닛 · 멤버</span>
+          </div>
+          <div style="padding:8px 20px 20px;display:flex;flex-direction:column;gap:10px">
+            <p class="faint" style="font-size:12px;margin:0;line-height:1.6">
+              현재 조직도를 CSV로 내려받아 <b>엑셀에서 편집</b>한 뒤 업로드하면 일괄 반영됩니다.<br>
+              양식: <code>그룹 · 그룹장 · 유닛 · 유닛장 · 이름 · 직급 · 직책 · 프로젝트 · 역할 · 집계대상 · 로그인노출</code> (멤버 1명 = 1행)<br>
+              <span style="color:var(--text3)">그룹/유닛은 값에서 자동 생성됩니다. 그룹장은 멤버가 아니어도 됩니다(이름만 표기).</span>
+            </p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn-new ghost" onclick="exportOrgCsv()">📥 조직도 내려받기 (CSV)</button>
+              <button class="btn-new ghost" onclick="document.getElementById('orgCsvFile').click()">📤 업로드 · 미리보기</button>
+              <input type="file" id="orgCsvFile" accept=".csv,text/csv" style="display:none" onchange="importOrgCsvFile(event)">
+            </div>
+          </div>
+        </div>
+
+        <!-- 직급 · 직책 옵션 관리 (멤버 추가/편집 드롭다운에 반영) -->
+        <div class="card" style="grid-column:1 / -1">
+          <div class="card-head">
+            <div class="card-title">🏷 직급 · 직책 관리</div>
+            <span class="faint" style="font-size:12px">멤버 추가/편집 선택지</span>
+          </div>
+          <div style="padding:8px 20px 20px">
+            <p class="faint" style="font-size:12px;margin:0 0 14px;line-height:1.6">
+              여기서 정한 항목이 <b>멤버 추가·편집</b> 화면의 직급/직책 드롭다운에 나타납니다.
+              (조직도 CSV 업로드로 들어온 값도 자동 인식되지만, 미리 등록해두면 선택이 편합니다.)
+            </p>
+            <!-- 두 열의 칩 개수가 달라도 입력창 줄이 어긋나지 않도록 각 열을 flex 컬럼으로 두고 입력부를 하단 정렬 -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;align-items:stretch">
+              <div style="display:flex;flex-direction:column">
+                <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">직급 (계급 — 사원·과장·부장 등)</div>
+                <div id="saPosChips" style="margin-bottom:8px;flex:1"></div>
+                <div style="display:flex;gap:6px;margin-top:auto">
+                  <input id="saPosInput" placeholder="직급 추가 (예: 수석)" onkeydown="if(event.key==='Enter')addJobOpt('pos')" style="flex:1;min-width:0;font-size:12px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px">
+                  <button class="btn-new sm ghost" onclick="addJobOpt('pos')">추가</button>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column">
+                <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">직책 (조직 역할 — 유닛장·그룹장 등)</div>
+                <div id="saTitleChips" style="margin-bottom:8px;flex:1"></div>
+                <div style="display:flex;gap:6px;margin-top:auto">
+                  <input id="saTitleInput" placeholder="직책 추가 (예: 유닛장)" onkeydown="if(event.key==='Enter')addJobOpt('title')" style="flex:1;min-width:0;font-size:12px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px">
+                  <button class="btn-new sm ghost" onclick="addJobOpt('title')">추가</button>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+              <button class="btn-new sm ghost" onclick="_renderJobEditors()">되돌리기</button>
+              <button class="btn-new sm primary" onclick="saveJobOpts()">💾 저장</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 조직 호칭 관리 — 화면 라벨(본부/팀/팀원…)을 조직 체계에 맞게 -->
+        <div class="card" style="grid-column:1 / -1">
+          <div class="card-head">
+            <div class="card-title">🏷 조직 호칭</div>
+            <span class="faint" style="font-size:12px">화면 표기 라벨</span>
+          </div>
+          <div style="padding:8px 20px 20px">
+            <p class="faint" style="font-size:12px;margin:0 0 14px;line-height:1.6">
+              조직 체계에 맞는 호칭으로 화면 표기를 바꿉니다. (예: 본부→그룹, 팀→유닛, 팀원→구성원)
+              비워두면 기본값을 사용합니다. 저장 후 새로고침하면 전 화면에 반영됩니다.
+            </p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+              <div><label style="font-size:12px;color:var(--text2);font-weight:600">상위 조직 (기본: 본부)</label><input id="olDivision" placeholder="본부" style="width:100%;margin-top:5px;font-size:13px;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px"></div>
+              <div><label style="font-size:12px;color:var(--text2);font-weight:600">하위 조직 (기본: 팀)</label><input id="olTeam" placeholder="팀" style="width:100%;margin-top:5px;font-size:13px;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px"></div>
+              <div><label style="font-size:12px;color:var(--text2);font-weight:600">구성원 (기본: 팀원)</label><input id="olMember" placeholder="팀원" style="width:100%;margin-top:5px;font-size:13px;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px"></div>
+              <div><label style="font-size:12px;color:var(--text2);font-weight:600">하위조직장 (기본: 팀장)</label><input id="olLeader" placeholder="팀장" style="width:100%;margin-top:5px;font-size:13px;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px"></div>
+              <div><label style="font-size:12px;color:var(--text2);font-weight:600">상위조직장 (기본: 본부장)</label><input id="olDivisionHead" placeholder="본부장" style="width:100%;margin-top:5px;font-size:13px;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px"></div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+              <button class="btn-new sm ghost" onclick="loadOrgLabelEditor()">되돌리기</button>
+              <button class="btn-new sm primary" onclick="saveOrgLabels()">💾 저장</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 샘플 조직도 일괄 등록 — 운영/개발 모두 사용 (운영은 confirm 필요) -->
+        <div class="card" style="grid-column:1 / -1">
+          <div class="card-head">
+            <div class="card-title">🧩 샘플 조직도 불러오기</div>
+            <span class="faint" style="font-size:12px">가상 인물 · 온보딩용</span>
+          </div>
+          <div style="padding:8px 20px 20px;display:flex;flex-direction:column;gap:10px">
+            <p class="faint" style="font-size:12px;margin:0;line-height:1.6">
+              처음 세팅 시 구조를 눈으로 보고 시작할 수 있게 <b>가상 인물 샘플</b>(2그룹 · 3유닛 · 8명)을 등록합니다.<br>
+              같은 (유닛, 이름) 조합이 이미 있으면 skip — 기존 데이터는 그대로 보존됩니다. 실제 조직은 <b>조직도 CSV 업로드</b>로 넣으세요.
+            </p>
+            <p id="saSeedEnvNote" class="faint" style="font-size:11px;margin:0;padding:6px 10px;background:var(--bg2);border-radius:6px"></p>
+            <button class="btn-new" onclick="seedSampleOrg()" style="align-self:flex-start">
+              🧩 샘플 조직도 등록
+            </button>
+            <div id="saSeedResult" style="font-size:12px;display:none;padding:8px;border-radius:6px;background:var(--bg2)"></div>
+          </div>
+        </div>
+
+        <!-- 개발 환경 전용: 운영기 → 개발기 데이터 동기화 -->
+        <div class="card" id="saDevSyncCard" style="display:none;border:2px solid var(--warning);background:var(--warning-bg, #fffbeb);grid-column:1 / -1">
+          <div class="card-head">
+            <div class="card-title" style="color:var(--warning)">🔄 개발 환경 전용</div>
+            <span class="faint" style="font-size:11px">DEV 스키마 전용 기능</span>
+          </div>
+          <div style="padding:8px 20px 20px;display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:13px;color:var(--text);line-height:1.6">
+              <strong>📥 운영기 → 개발기 동기화</strong><br>
+              <span class="faint" style="font-size:12px">
+                운영기(public 스키마) 데이터를 개발기(dev 스키마)로 복사합니다.<br>
+                선택한 테이블만 가져옵니다 (체크박스에서 선택).
+              </span>
+            </div>
+            <div id="saSyncTableList" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card)"></div>
+            <button class="btn-new" style="background:var(--warning);color:#fff;border-color:var(--warning);align-self:flex-start" onclick="syncFromProd()">
+              ⬇️ 선택 항목 가져오기
+            </button>
+            <div id="saSyncResult" style="font-size:12px;display:none;padding:8px;border-radius:6px;background:var(--bg2)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 본부 추가/편집 모달 -->
+<div class="modal-ov" id="saDivisionModal">
+  <div class="modal">
+    <div class="modal-title" id="saDivisionModalTitle" data-ol="{division} 추가">본부 추가</div>
+    <input type="hidden" id="saDivisionEditSlug">
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new" data-ol="{division} ID (slug)">본부 ID (slug)</label>
+      <input type="text" id="saDivisionSlug" class="input-new" placeholder="예: sales, rnd">
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new" data-ol="{division}명">본부명</label>
+      <input type="text" id="saDivisionName" class="input-new" data-ol-attr="placeholder:예: 사업{division}" placeholder="예: 사업본부">
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new" data-ol="{division_head}">본부장</label>
+      <input type="text" id="saDivisionHead" class="input-new" list="saMemberNameList" placeholder="전사 구성원에서 선택 (이름 입력 시 자동완성)" autocomplete="off">
+      <!-- 전사 구성원 이름 목록 — 자유 입력 오타로 조직 매칭이 깨지는 것을 막는다 (31차) -->
+      <datalist id="saMemberNameList"></datalist>
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:18px">
+      <label class="label-new" data-ol="{division} 관리자 비밀번호">본부 관리자 비밀번호</label>
+      <input type="password" id="saDivisionPw" class="input-new" placeholder="(비워두면 변경 안 함)">
+    </div>
+    <div class="modal-btns">
+      <button class="btn-new ghost" onclick="closeModal('saDivisionModal')">취소</button>
+      <button class="btn-new primary" onclick="submitSaDivision()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 팀 추가/편집 모달 -->
+<div class="modal-ov" id="saTeamModal">
+  <div class="modal">
+    <div class="modal-title" id="saTeamModalTitle" data-ol="{team} 추가">팀 추가</div>
+    <input type="hidden" id="saTeamEditSlug">
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new" data-ol="{team} ID (slug)">팀 ID (slug)</label>
+      <input type="text" id="saTeamSlug" class="input-new" placeholder="예: team1, team2">
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new" data-ol="{team}명">팀명</label>
+      <input type="text" id="saTeamName" class="input-new" data-ol-attr="placeholder:예: 개발 {team}" placeholder="예: 개발 팀">
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new" data-ol="소속 {division}">소속 본부</label>
+      <select id="saTeamDivision" class="select-new"></select>
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new" data-ol="{leader}">팀장</label>
+      <select id="saTeamLeader" class="select-new"></select>
+      <div class="faint" id="saTeamLeaderHint" style="font-size:11px;margin-top:4px;display:none" data-ol="{member:이} 없습니다. {team} 저장 후 {member:을} 먼저 등록해주세요.">팀원이 없습니다. 팀 저장 후 팀원을 먼저 등록해주세요.</div>
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new">주간보고 관리자 (정)</label>
+      <select id="saTeamReportAdmin1" class="select-new"></select>
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new">주간보고 관리자 (부, 선택)</label>
+      <select id="saTeamReportAdmin2" class="select-new"></select>
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:18px">
+      <label class="label-new" data-ol="{team} 관리자 비밀번호">팀 관리자 비밀번호</label>
+      <input type="password" id="saTeamPw" class="input-new" placeholder="(비워두면 변경 안 함)">
+    </div>
+    <div class="modal-btns">
+      <button class="btn-new ghost" onclick="closeModal('saTeamModal')">취소</button>
+      <button class="btn-new primary" onclick="submitSaTeam()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 시스템 관리자 — 팀원 관리 모달 (v3.1.0) -->
+<div class="modal-ov" id="saMembersModal">
+  <div class="modal" style="max-width:760px;width:94%">
+    <div class="modal-title" id="saMembersModalTitle" data-ol="{member} 관리">팀원 관리</div>
+    <div class="modal-sub" id="saMembersModalSub" style="margin-bottom:14px">추가 · 수정 · 삭제 · 로그인 노출 토글 · PIN 초기화</div>
+
+    <!-- 추가 행 -->
+    <div style="padding:10px 14px;background:var(--bg2);border-radius:8px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+      <input type="text" id="saMemberAddName" class="input-new" placeholder="이름" style="flex:1.2;min-width:90px;padding:7px 10px;font-size:13px">
+      <select id="saMemberAddPosition" class="input-new" style="flex:1;min-width:80px;padding:7px 10px;font-size:13px;background:var(--surface)">
+        <!-- _saFillMemberOptionSelects() 가 채움 -->
+      </select>
+      <select id="saMemberAddProject" class="input-new" style="flex:1.4;min-width:100px;padding:7px 10px;font-size:13px;background:var(--surface)">
+        <!-- _saFillMemberOptionSelects() 가 채움 -->
+      </select>
+      <button class="btn-new sm primary" onclick="saAddMember()">+ 추가</button>
+    </div>
+
+    <div id="saMembersList" style="max-height:55vh;overflow:auto;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:4px 0">
+      <!-- 동적 렌더 -->
+    </div>
+    <div style="margin-top:10px;padding:8px 12px;font-size:12px;color:var(--text2);background:color-mix(in oklab, var(--success) 8%, transparent);border:1px solid color-mix(in oklab, var(--success) 30%, transparent);border-radius:6px;display:flex;align-items:center;gap:6px">
+      <span style="color:var(--success);font-weight:700">⚡</span>
+      <span>모든 변경(추가·수정·삭제·노출 토글·PIN 초기화)은 <strong>즉시 자동 저장</strong>됩니다. 닫기를 눌러도 손실 없음.</span>
+    </div>
+    <div class="modal-btns" style="margin-top:10px">
+      <button class="btn-new ghost" onclick="closeModal('saMembersModal')">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 시스템 관리자 — 팀원 정보 수정 모달 -->
+<div class="modal-ov" id="saMemberEditModal">
+  <div class="modal" style="max-width:420px;width:90%">
+    <div class="modal-title" data-ol="{member} 정보 수정">팀원 정보 수정</div>
+    <input type="hidden" id="saMemberEditOrigName">
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new">이름</label>
+      <input type="text" id="saMemberEditName" class="input-new">
+      <div class="faint" style="font-size:11px;margin-top:4px">⚠ 이름 변경 시 해당 멤버의 PIN 이 초기화됩니다.</div>
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new">직급 <span style="font-weight:400;color:var(--text3);font-size:11px">(사원~부장)</span></label>
+      <select id="saMemberEditPosition" class="select-new">
+        <!-- _saFillMemberOptionSelects() 가 채움 -->
+      </select>
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new">직책 <span style="font-weight:400;color:var(--text3);font-size:11px" data-ol="({leader}/이사/{division_head} 등 — 직급과 별개)">(팀장/이사/본부장 등 — 직급과 별개)</span></label>
+      <select id="saMemberEditTitle" class="select-new">
+        <!-- _saFillMemberOptionSelects() 가 채움 -->
+      </select>
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new">프로젝트</label>
+      <select id="saMemberEditProject" class="select-new">
+        <!-- _saFillMemberOptionSelects() 가 채움 -->
+      </select>
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:12px">
+      <label class="label-new">세부 역할 (sub_role)</label>
+      <input type="text" id="saMemberEditSubRole" class="input-new" placeholder="예: 설계자, 개발자 (선택)">
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:18px">
+      <label class="label-new">메인 역할</label>
+      <select id="saMemberEditRole" class="select-new">
+        <option value="dev">개발</option>
+        <option value="ops">운영</option>
+        <option value="etc">기타</option>
+      </select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-new ghost" onclick="closeModal('saMemberEditModal')">취소</button>
+      <button class="btn-new primary" onclick="saSubmitMemberEdit()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 관리자 로그인 모달 -->
+<div class="modal-ov" id="modalAdmin">
+  <div class="modal">
+    <div class="modal-title">🔐 관리자 인증</div>
+    <div class="modal-sub">관리자 비밀번호를 입력하세요.</div>
+    <input type="password" id="adminPwIn" placeholder="비밀번호" onkeydown="if(event.key==='Enter')checkAdmin()">
+    <div class="modal-btns">
+      <button class="btn-new ghost" onclick="closeModal('modalAdmin')">취소</button>
+      <button class="btn-new primary" onclick="checkAdmin()">확인</button>
+    </div>
+  </div>
+</div>
+
+<!-- 권한 모달 -->
+<div class="modal-ov" id="permModal">
+  <div class="modal">
+    <div class="modal-title">⏳ 수정 권한 부여</div>
+    <div class="modal-sub">
+      <span id="permModalName" style="font-weight:700;color:var(--text)"></span> 님의
+      <span id="permModalWeek" style="font-weight:700;color:var(--text)"></span> 주간보고 작성 기간을 설정합니다.
+    </div>
+    <div class="field-new" style="padding:0 26px">
+      <label class="label-new">시작일</label>
+      <input type="date" id="permStart">
+    </div>
+    <div class="field-new" style="padding:0 26px;margin-bottom:18px">
+      <label class="label-new">종료일 <span style="color:var(--text2);font-weight:500">(해당일 자정까지)</span></label>
+      <input type="date" id="permEnd">
+    </div>
+    <div class="modal-btns">
+      <button class="btn-new ghost" onclick="closeModal('permModal')">취소</button>
+      <button class="btn-new primary" onclick="submitPermModal()">부여하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 최종 취합 모달 (결재권자 전용) -->
+<div class="modal-ov" id="finalMergeModal">
+  <div class="modal fm-modal">
+    <!-- 오로라 히어로 헤더 (AI 요약 카드와 동일한 디자인 언어) -->
+    <div class="fm-hero" id="fmHero">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div class="fm-title">📋 최종 취합 <span class="fm-week" id="finalMergeWeek"></span></div>
+        <button class="modal-head-close" onclick="closeModal('finalMergeModal')">✕</button>
+      </div>
+      <div class="fm-sub" data-ol="확정된 {member} 요약 + 본인 주간보고를 AI 가 하나의 상부 보고용 문서로 병합합니다.">확정된 팀원 요약 + 본인 주간보고를 AI 가 하나의 상부 보고용 문서로 병합합니다.</div>
+      <div class="fm-ctrl">
+        <select id="finalBaseType" onchange="fmBaseChanged()">
+          <option value="project">프로젝트별 · 섹션형</option>
+          <option value="project_flat">프로젝트별 · 단일표</option>
+          <option value="member_individual" data-ol="{member}별 · 개인별">팀원별 · 개인별</option>
+          <option value="member_group" data-ol="{member}별 · 그룹화">팀원별 · 그룹화</option>
+          <option value="team" data-ol="{team}별">팀별</option>
+        </select>
+        <button class="btn-new sm primary" onclick="genFinalMerge()" id="finalGenBtn">✨ 병합 생성</button>
+      </div>
+    </div>
+    <!-- 결재 라인 상태 — 모달 상단 상시 노출 (하단 fmSubmitState 는 타임스탬프 보조) -->
+    <div class="fm-review-chip fm-modal-review" id="fmModalReview" style="display:none"></div>
+    <!-- 생성 진행 단계 (동적 피드백) -->
+    <div class="fm-progress" id="fmProgress">
+      <div class="fm-step" data-step="1"><span class="fm-step-ic"></span><span class="fm-step-tx" data-ol="확정된 {member} 요약 불러오는 중...">확정된 팀원 요약 불러오는 중...</span></div>
+      <div class="fm-step" data-step="2"><span class="fm-step-ic"></span><span class="fm-step-tx">본인 주간보고 확인 중...</span></div>
+      <div class="fm-step" data-step="3"><span class="fm-step-ic"></span><span class="fm-step-tx">AI 병합 문서 생성 중...</span></div>
+    </div>
+    <!-- 보기 전환: 미리보기(기본) ↔ 직접 수정 -->
+    <div class="fm-tabbar">
+      <div class="ai-mode-toggle">
+        <button class="ai-mode-btn active" id="fmTabPreview" onclick="fmSetTab('preview')" style="padding:7px 14px">📄 미리보기</button>
+        <button class="ai-mode-btn" id="fmTabEdit" onclick="fmSetTab('edit')" style="padding:7px 14px">✏️ 직접 수정</button>
+      </div>
+      <span class="fm-status" id="finalMergeStatus"></span>
+    </div>
+    <div class="fm-body">
+      <div class="md fm-preview" id="finalMergePreview"></div>
+      <textarea id="finalMergeEdit" oninput="renderFinalPreview(true)" placeholder="병합 결과가 여기에 마크다운으로 채워집니다. 자유롭게 다듬은 뒤 [미리보기] 로 확인하세요."></textarea>
+    </div>
+    <div class="fm-foot">
+      <button class="btn-new sm ghost" onclick="downloadFinalMerge()">📥 .md</button>
+      <span id="fmSubmitState" style="font-size:11.5px;color:var(--text3)"></span>
+      <div style="flex:1"></div>
+      <button class="btn-new sm ghost" onclick="closeModal('finalMergeModal')">닫기</button>
+      <button class="btn-new sm ghost" onclick="saveFinalMerge()">💾 저장</button>
+      <button class="btn-new sm primary" onclick="submitFinalReport()" id="fmSubmitBtn">🚀 보고</button>
+    </div>
+  </div>
+</div>
+
+<!-- 그룹장 — 유닛 최종 보고 열람 모달 -->
+<div class="modal-ov" id="dhReportModal">
+  <div class="modal fm-modal">
+    <div class="fm-hero">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div class="fm-title">📄 <span id="dhReportTitle">최종 보고</span></div>
+        <button class="modal-head-close" onclick="closeModal('dhReportModal')">✕</button>
+      </div>
+      <div class="fm-sub" id="dhReportMeta"></div>
+    </div>
+    <div class="fm-body">
+      <div class="md fm-preview" id="dhReportBody"></div>
+    </div>
+    <!-- 결재 영역 — 승인(코멘트 선택) / 보완요청(코멘트 필수, WS·푸시로 유닛장 통지) -->
+    <div id="dhReviewBar" style="flex-shrink:0;padding:10px 22px 0">
+      <div id="dhReviewState" style="display:none;font-size:12.5px;line-height:1.6;padding:9px 12px;border-radius:10px;margin-bottom:8px"></div>
+      <textarea id="dhReviewComment" rows="2" placeholder="결재 코멘트 (승인 시 선택 · 보완요청 시 필수)"
+        style="width:100%;font-size:13px;line-height:1.6;padding:9px 12px;background:var(--surface2);border:1px solid var(--line);border-radius:10px;color:var(--text);resize:vertical"></textarea>
+    </div>
+    <div class="fm-foot">
+      <button class="btn-new sm ghost" onclick="dhCopyReport()">📋 복사</button>
+      <button class="btn-new sm ghost" onclick="dhDownloadReport()">📥 .md</button>
+      <div style="flex:1"></div>
+      <button class="btn-new sm ghost" onclick="closeModal('dhReportModal')">닫기</button>
+      <button class="btn-new sm ghost" id="dhBtnRevise" style="color:var(--warn,#d97706)" onclick="dhReview('revise')">↩️ 보완요청</button>
+      <button class="btn-new sm primary" id="dhBtnApprove" onclick="dhReview('approve')">✅ 승인</button>
+    </div>
+  </div>
+</div>
+
+<!-- 조직도 CSV 업로드 미리보기 모달 (시스템관리자) -->
+<!-- 전사 구성원 관리 (31차) — 조회·필터·일괄 인사조치. 그룹장/유닛장 지정의 단일 조회원 -->
+<div class="modal-ov" id="memberMasterModal">
+  <div class="modal fm-modal">
+    <div class="fm-hero">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div class="fm-title">👥 전사 <span data-ol="{member}">구성원</span> <span class="fm-week" id="mmCount"></span></div>
+        <button class="modal-head-close" onclick="closeModal('memberMasterModal')">✕</button>
+      </div>
+      <div class="fm-sub">입사·퇴사·인사이동·겸직·PIN 을 한 곳에서 처리합니다. 여러 명을 선택해 일괄 적용할 수 있어요.</div>
+      <div class="mm-filters">
+        <div class="ai-mode-toggle" style="flex-shrink:0">
+          <button class="ai-mode-btn active" id="mmViewTree" onclick="mmSetView('tree')" style="padding:6px 12px">🗂 조직도</button>
+          <button class="ai-mode-btn" id="mmViewFlat" onclick="mmSetView('flat')" style="padding:6px 12px">📋 전체 목록</button>
+        </div>
+        <input id="mmSearch" placeholder="이름 검색" oninput="renderMemberMaster()">
+        <select id="mmFilterOrg" onchange="renderMemberMaster()"><option value="">소속 전체</option></select>
+        <select id="mmFilterPos" onchange="renderMemberMaster()"><option value="">직급 전체</option></select>
+        <select id="mmFilterTitle" onchange="renderMemberMaster()"><option value="">직책 전체</option></select>
+        <select id="mmFilterYear" onchange="renderMemberMaster()"><option value="">입사년도 전체</option></select>
+        <select id="mmFilterPin" onchange="renderMemberMaster()">
+          <option value="">PIN 전체</option><option value="y">등록됨</option><option value="n">미등록</option>
+        </select>
+        <select id="mmFilterStatus" onchange="renderMemberMaster()">
+          <option value="active">재직중</option><option value="inactive">퇴사</option><option value="">전체</option>
+        </select>
+        <select id="mmFilterTarget" onchange="renderMemberMaster()">
+          <option value="">집계 전체</option><option value="y">집계 대상</option><option value="n">집계 제외</option>
+        </select>
+      </div>
+    </div>
+    <!-- 선택 시 나타나는 일괄 조치 바 -->
+    <div class="mm-bulk" id="mmBulkBar" style="display:none">
+      <span id="mmSelCount" style="font-weight:700;color:var(--brand-700)"></span>
+      <select id="mmTargetTeam" style="min-width:150px"><option value="">이동/겸직 대상 조직</option></select>
+      <button class="btn-new sm" onclick="mmBulk('move')">🔀 인사이동</button>
+      <button class="btn-new sm" onclick="mmBulk('dual')">➕ 겸직 추가</button>
+      <button class="btn-new sm ghost" onclick="mmBulk('reset_pin')">🔑 PIN 초기화</button>
+      <button class="btn-new sm ghost" onclick="mmBulk('set_target', true)">집계 ON</button>
+      <button class="btn-new sm ghost" onclick="mmBulk('set_target', false)">집계 OFF</button>
+      <button class="btn-new sm ghost" onclick="mmBulk('activate')">↩️ 복직</button>
+      <button class="btn-new sm ghost" style="color:var(--warn,#d97706)" onclick="mmBulk('deactivate')">🚪 퇴사 처리</button>
+      <button class="btn-new sm ghost" style="color:var(--danger)" onclick="mmBulk('delete')">🗑️ 삭제</button>
+    </div>
+    <div class="fm-body mm-body">
+      <!-- 좌: 조직 트리 (그룹 › 유닛) / 우: 선택 조직의 구성원 -->
+      <div class="mm-tree" id="mmTree"></div>
+      <div class="fm-preview" id="mmList" style="padding:0"></div>
+    </div>
+    <div class="fm-foot">
+      <button class="btn-new sm ghost" onclick="mmToggleAll(true)">전체 선택</button>
+      <button class="btn-new sm ghost" onclick="mmToggleAll(false)">선택 해제</button>
+      <div style="flex:1"></div>
+      <button class="btn-new sm ghost" onclick="loadMemberMaster()">🔄 새로고침</button>
+      <button class="btn-new sm ghost" onclick="closeModal('memberMasterModal')">닫기</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-ov" id="orgCsvModal">
+  <div class="modal" style="max-width:640px;width:94vw">
+    <div class="modal-head-row">
+      <div class="modal-title" style="margin:0;padding:0;font-size:16px">📤 조직도 반영 미리보기</div>
+      <button class="modal-head-close" onclick="closeModal('orgCsvModal')">✕</button>
+    </div>
+    <div style="padding:4px 2px 0">
+      <p class="faint" style="font-size:12px;margin:0 0 10px;line-height:1.6">
+        아래 변경 사항을 확인한 뒤 <b>[반영]</b> 을 누르면 실제 적용됩니다. 유닛/그룹은 이름으로 매칭해
+        기존 보고·PIN·설정을 보존하고, 멤버 이동 시 PIN도 함께 이동합니다.
+      </p>
+      <div id="orgCsvPlanBody" style="max-height:56vh;overflow:auto;font-size:12.5px;line-height:1.7;border:1px solid var(--border);border-radius:8px;padding:12px 14px;background:var(--surface2)"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin:14px 0 4px">
+        <button class="btn-new ghost" onclick="closeModal('orgCsvModal')">취소</button>
+        <button class="btn-new primary" id="orgCsvApplyBtn" onclick="applyOrgCsv()">✅ 반영</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="wsNotiContainer"></div>
+
+<!-- ═══ JavaScript Modules ═══ -->
+<script src="/static/js/api.js?v=20260720a"></script>
+<script src="/static/js/utils.js?v=20260720c"></script>
+<script src="/static/js/auth.js?v=20260720b"></script>
+<script src="/static/js/user.js?v=20260719a"></script>
+<script src="/static/js/admin.js?v=20260720b"></script>
+<script src="/static/js/system_admin.js?v=20260720b"></script>
+<script src="/static/js/members.js?v=20260720a"></script>
+<script src="/static/js/settings.js?v=20260720a"></script>
+<script src="/static/js/ai.js?v=20260720d"></script>
+<script src="/static/js/division.js?v=20260720b"></script>
+<script src="/static/js/app.js?v=20260720d"></script>
+<script src="/static/js/pwa.js?v=20260719b"></script>
+</body>
+</html>

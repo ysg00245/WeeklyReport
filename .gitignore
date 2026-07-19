@@ -1,0 +1,17 @@
+venv/
+__pycache__/
+*.pyc
+weekly_report.db
+*.log
+.vscode/
+.idea/
+scratch/
+.claude/
+
+# 시크릿 / 로컬 전용 — 절대 커밋 금지 (.env.example 은 공개 템플릿이라 추적 유지)
+.env
+migrate_to_neon.py
+
+# 조직도 CSV — 실명 포함 로컬 작업 파일 (퍼블릭 저장소 반출 금지)
+조직도_*.csv
+*_org.csv
