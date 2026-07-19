@@ -419,9 +419,16 @@ async def init_db():
                 except: pass
         else:
             # SQLite는 IF NOT EXISTS를 지원하지 않으므로 try-except 유지
+            # ⚠️ 위 PostgreSQL 목록과 항목이 어긋나면, 구버전 DB 를 업그레이드할 때 한쪽 엔진에만
+            #    컬럼이 안 생긴다(신규 설치는 CREATE TABLE 이 덮으므로 증상이 안 보여 발견이 늦다).
+            #    양쪽 목록을 함께 수정할 것 — 정합성은 scratchpad/migration_parity.py 로 검증 가능.
             migrations = [
                 ("members", "sub_role", "TEXT NOT NULL DEFAULT ''"),
                 ("members", "sort_order", "INTEGER NOT NULL DEFAULT 0"),
+                ("members", "updated_at", "TEXT"),
+                ("reports", "updated_at", "TEXT"),
+                ("summaries", "created_at", "TEXT"),
+                ("summaries", "updated_at", "TEXT"),
                 ("members", "project", "TEXT NOT NULL DEFAULT ''"),
                 ("members", "position", "TEXT NOT NULL DEFAULT ''"),
                 ("members", "team_id", "INTEGER NOT NULL DEFAULT 1"),   # 멀티팀 준비 (기존 팀원 = 1팀)

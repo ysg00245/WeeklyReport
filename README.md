@@ -133,17 +133,86 @@ raise HTTPException(404, f"{josa((await get_org_labels(db))['team'], '을')} 찾
 교체 후에는 `static/index.html` 의 캐시버스터(`?v=`)를 올려야 기존 사용자에게도 새 로고가 보입니다.
 이미 앱을 설치한 사용자는 홈 화면 아이콘이 OS 캐시에 남아 있어, 재설치해야 바뀔 수 있습니다.
 
-## 배포
+## 어떤 DB를 써야 하나요
 
-Render + 관리형 PostgreSQL 조합을 기준으로 설명합니다. 다른 PaaS도 동일합니다.
+**SQLite 와 PostgreSQL 은 같은 스키마를 만듭니다.** 코드가 엔진에 맞춰 타입만 바꿔 생성하므로,
+`DATABASE_URL` 만 바꾸면 됩니다. 나중에 SQLite → PostgreSQL 로 옮겨도 테이블 구조는 그대로입니다.
 
-1. `render.yaml` 과 `Procfile` 이 포함되어 있어 저장소를 연결하면 서비스가 잡힙니다.
-2. 환경 변수를 위 표대로 등록합니다.
-3. `main` 브랜치에 push 하면 자동 배포됩니다.
+| | SQLite | PostgreSQL |
+|---|---|---|
+| 설정 | `DATABASE_URL` 비워두기 | `DATABASE_URL` 지정 |
+| 데이터 위치 | 서버의 파일 1개 | 별도 DB 서버 |
+| 적합한 경우 | 로컬 개발, 사내 서버에 직접 설치 | 클라우드 배포(Render 등) |
+| 주의 | 컨테이너 PaaS 에서는 **재배포 시 파일이 사라짐** | 없음 |
 
-**서버리스 PostgreSQL 을 쓴다면** 유휴 시 자동 절전(autosuspend)을 켜 두세요. 비용이 크게 줄어듭니다.
-다만 이 앱은 절전을 방해하는 주기적 DB 폴링을 의도적으로 넣지 않았습니다 — keepalive 류를 추가하면
-절전이 걸리지 않아 요금이 급증합니다. 첫 요청이 느린 것(콜드스타트)은 안내 문구로 처리하고 있습니다.
+**사내 서버가 있다면** SQLite로 충분합니다. 수십~수백 명 규모의 주간보고 정도는 문제없고,
+백업도 파일 하나만 복사하면 됩니다.
+
+**사내 서버가 없다면** 아래 클라우드 배포를 따라가세요. 이때 **SQLite 를 쓰면 안 됩니다.**
+Render 같은 컨테이너 기반 서비스는 재배포·재시작할 때마다 디스크가 초기화돼서
+**작성된 보고가 전부 사라집니다.** 반드시 PostgreSQL 을 붙이세요.
+
+## 클라우드 배포 (사내 서버가 없는 경우)
+
+Render(웹 서버) + Neon(PostgreSQL) 조합입니다. 둘 다 무료 플랜으로 시작할 수 있습니다.
+
+### 1. 데이터베이스 만들기 (Neon)
+
+1. [neon.tech](https://neon.tech) 가입 → **Create project**
+2. 리전은 사용자와 가까운 곳으로 (한국이면 `Asia Pacific (Singapore)`)
+3. 생성되면 **Connection string** 을 복사합니다. 이런 형태입니다:
+   ```
+   postgresql://<user>:<password>@<host>.neon.tech/<db>?sslmode=require
+   ```
+4. **Settings → Compute → Autosuspend** 를 켜 둡니다(기본 5분). 아무도 안 쓰는 시간에
+   DB가 잠들어 요금이 거의 안 나옵니다.
+5. **Settings → Billing → Spending limit** 에 상한을 걸어두세요. 실수로 요금이 폭주하는 것을 막습니다.
+
+> Neon 이 아니어도 됩니다. Supabase, Railway, AWS RDS 등 PostgreSQL 이면 무엇이든 동작합니다.
+> 접속 URL 형식만 같으면 됩니다.
+
+### 2. 웹 서버 배포 (Render)
+
+1. [render.com](https://render.com) 가입 → **New → Web Service** → 이 저장소를 fork 한 뒤 연결
+2. 설정값:
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+   - **Instance Type**: Free 또는 Starter
+   (저장소에 `render.yaml`·`Procfile` 이 있어 자동으로 잡히는 경우도 많습니다)
+3. **Environment** 탭에서 환경 변수를 등록합니다:
+
+   | Key | Value |
+   |---|---|
+   | `DATABASE_URL` | 1단계에서 복사한 Neon 접속 URL |
+   | `ADMIN_PW` | 팀 관리자 비밀번호 (직접 정하기) |
+   | `SYSTEM_ADMIN_PW` | 시스템 관리자 비밀번호 (더 강하게) |
+   | `ANTHROPIC_API_KEY` | AI 요약을 쓸 경우만 |
+   | `ENV` | `prod` |
+   | `VAPID_SUB` | 배포 후 받은 주소 (예: `https://myapp.onrender.com`) |
+
+4. 배포가 끝나면 `https://<서비스명>.onrender.com` 으로 접속됩니다.
+   테이블은 첫 실행 때 자동 생성되므로 별도 마이그레이션이 필요 없습니다.
+
+### 3. 초기 설정
+
+1. 우측 상단 자물쇠 아이콘 → `SYSTEM_ADMIN_PW` 로 시스템 관리자 콘솔 진입
+2. **조직 관리** 에서 조직·팀을 만들고 구성원을 추가 (또는 조직도 CSV 로 한 번에)
+3. 필요하면 **조직 호칭**·**브랜드** 설정 (위 항목 참조)
+4. 구성원은 첫 로그인 시 본인이 PIN 4자리를 등록합니다
+
+### 무료 플랜에서 알아둘 것
+
+- **Render Free 는 15분 유휴 후 잠듭니다.** 다음 접속 때 깨어나는 데 30초~1분 걸립니다.
+  실사용 팀이라면 Starter 플랜을 권합니다.
+- **Neon 도 자동 절전됩니다.** 첫 요청이 몇 초 느린데, 앱이 "서버를 깨우는 중" 안내를 띄웁니다.
+- ⚠️ **절전을 막으려고 주기적으로 DB를 찌르는 코드(keepalive)를 넣지 마세요.**
+  절전이 안 걸려서 요금이 급증합니다. 이 앱이 주기적 DB 폴링을 넣지 않은 이유입니다.
+  느린 첫 요청은 안내 문구로 처리하는 편이 훨씬 저렴합니다.
+
+### 백업
+
+- **PostgreSQL**: Neon 등 관리형 서비스는 자동 백업·시점 복구를 제공합니다. 설정에서 켜 두세요.
+- **SQLite**: `weekly_report.db` 파일을 주기적으로 복사하면 됩니다.
 
 ### 정적 파일 캐시 규칙
 
