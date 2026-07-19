@@ -435,9 +435,23 @@ DEFAULT_FORMAT_FINAL = """[과제]
 
 
 async def _load_prompt(db: AsyncSession, key: str, default: str, team_id: int = 1) -> str:
-    # settings 테이블에서 프롬프트 텍스트 로드
+    """프롬프트 로드 — 3계층 우선순위.
+
+        팀별 설정(team_id=N)  >  전사 공통(team_id=0)  >  코드 기본값(DEFAULT_*)
+
+    team_id=0 은 시스템 관리자 콘솔의 '전역 프롬프트'가 저장되는 자리다.
+    예전에는 team_id=N 만 조회해서, 전역에 저장해도 어느 팀에도 적용되지 않았다.
+
+    두 계층을 한 번의 쿼리로 가져온다(팀 값 우선 정렬 + LIMIT 1).
+    쿼리를 두 번 날리면 서버리스 DB 에서 왕복 비용이 그대로 두 배가 된다.
+    """
     try:
-        result = await db.execute(text("SELECT value FROM settings WHERE key = :key AND team_id = :tid"), {"key": key, "tid": team_id})
+        result = await db.execute(text("""
+            SELECT value FROM settings
+             WHERE key = :key AND team_id IN (:tid, 0)
+             ORDER BY CASE WHEN team_id = :tid THEN 0 ELSE 1 END
+             LIMIT 1
+        """), {"key": key, "tid": team_id})
         row = result.mappings().first()
         if not row:
             return default
