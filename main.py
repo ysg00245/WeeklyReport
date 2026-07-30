@@ -195,7 +195,8 @@ async def _send_deadline_for_team(db, team_id: int, team_name: str, *, force: bo
                     "skipped_reason": "이미 마감 시각 경과"}
 
     # 미제출자 조회 (팀 한정 + 노출 + 보고 대상)
-    # 팀장(teams.leader_name)은 마감 대상에서 제외 → 독촉 알림도 보내지 않는다.
+    # 보고받는 사람(팀장 teams.leader_name / 그룹장 divisions.head_name)은 마감 제외 → 독촉 알림도 안 감.
+    # (팀장은 대개 is_report_target=False 로도 빠지지만, 플래그가 잘못 설정돼도 새지 않도록 이름으로 이중 방어)
     result = await db.execute(text("""
         SELECT m.name FROM members m
         LEFT JOIN reports r ON r.member_name = m.name AND r.week_key = :wk AND r.team_id = m.team_id
@@ -203,6 +204,7 @@ async def _send_deadline_for_team(db, team_id: int, team_name: str, *, force: bo
           AND COALESCE(m.is_visible, TRUE) = TRUE
           AND COALESCE(m.is_report_target, TRUE) = TRUE
           AND m.name <> COALESCE((SELECT leader_name FROM teams WHERE id = :tid), '')
+          AND m.name NOT IN (SELECT head_name FROM divisions WHERE COALESCE(head_name, '') <> '')
           AND r.id IS NULL
     """), {"wk": week_key, "tid": team_id})
     unsubmitted = [row[0] for row in result.fetchall()]
