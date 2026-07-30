@@ -84,6 +84,16 @@ async function updateDeadlineDisplay() {
   const sideBox = document.getElementById('sideDeadlineBox');
   // 항상 기존 타이머 정리 (state 전환 시 leak 방지)
   if (_deadlineTimer) { clearInterval(_deadlineTimer); _deadlineTimer = null; }
+
+  // 팀장은 마감 대상에서 제외(백엔드도 동일) — 마감 카운트다운·경고를 띄우지 않는다.
+  // 팀원 취합 후 보고하는 역할이라 마감 압박 UI 가 오히려 혼란을 준다.
+  if (typeof user !== 'undefined' && user && typeof memberIsApprover === 'function' && memberIsApprover(user.name)) {
+    if (sideBox) sideBox.style.display = 'none';
+    const urg = document.getElementById('deadlineUrgent');
+    if (urg) urg.style.display = 'none';
+    return;
+  }
+
   try {
     _deadlineInfo = await api(`/api/settings/deadline/info?week=${currentWriteWeek}`);
     // 보고 폼 푸터의 보고일자 라벨 갱신 (renderWriteForm 시점에 _deadlineInfo가 아직 없을 수 있어 사후 보정)

@@ -24,6 +24,21 @@ def get_current_week_key() -> str:
     return f"{iso_year}-W{iso_week:02d}"
 
 
+async def is_team_leader(db: AsyncSession, tid: int, name: str) -> bool:
+    """이 사람이 그 팀의 팀장(teams.leader_name)인지.
+
+    팀장은 팀원 요약을 취합해 상부에 보고하는 역할이라 마감(작성 차단·독촉 알림) 대상에서 제외한다.
+    판정은 (team_id, name) 기준 — 겸직이면 팀장인 팀에서만 제외되고, 팀원인 팀에서는 일반 취급.
+    """
+    if not name:
+        return False
+    row = (await db.execute(
+        text("SELECT 1 FROM teams WHERE id = :tid AND leader_name = :name"),
+        {"tid": tid, "name": name},
+    )).first()
+    return row is not None
+
+
 async def _team_slug(db: AsyncSession, tid: int):
     """WS 브로드캐스트용 팀 slug. 전역 브로드캐스트라 팀 정보 없이는
     다른 팀 관리자/동명이인에게 오배송된다 — 모든 reports 이벤트에 동봉."""
@@ -270,7 +285,8 @@ async def save_report(
     is_late_submission = False  # 마감 경과 후 수정 여부 추적
 
     # 2-1. 현재 주차인 경우: 마감 여부 확인
-    if body.week_key == current_wk:
+    # 팀장은 마감 대상에서 제외 — 팀원 취합 후 보고하는 역할이라 마감에 걸리면 안 된다.
+    if body.week_key == current_wk and not await is_team_leader(db, tid, name):
         from deadline import load_deadline_config, is_deadline_passed
         config = await load_deadline_config(db)
         if is_deadline_passed(body.week_key, config):
