@@ -15,6 +15,7 @@
 | 구성원별 · 그룹 | `member_group` | 사람을 묶어 서술 — 인원 많을 때 |
 | 프로젝트별 · 섹션 | `project` | 프로젝트마다 헤더 + 표 |
 | 프로젝트별 · 단일표 | `project_flat` | 전체를 표 하나로 |
+| 프로젝트별 · 세로형 | `project_vertical` | 표 없이 이번주/차주/이슈를 세로로 쌓기 |
 | 팀 전체 통합 | `team` | 팀 단위 서술 — 상위 보고에 적합 |
 | 최종 취합 | `*_final` | 위 요약 + 팀장 본인 보고를 병합한 상부 보고서 |
 
@@ -122,6 +123,7 @@ LLM 서비스 중에서는 비용 부담이 작은 축에 속합니다.
 | `ai_format_member_group` | 구성원별 그룹 출력 형식 |
 | `ai_format_project` | 프로젝트별 섹션형 |
 | `ai_format_project_flat` | 프로젝트별 단일표 |
+| `ai_format_project_vertical` | 프로젝트별 세로형 (표 없음) |
 | `ai_format_team` | 팀 전체 통합 |
 | `ai_format_final` | 최종 취합(상부 보고서) |
 | `ai_assist_prompt` | 작성 도우미(구성원 보고 초안 첨삭) |

@@ -290,21 +290,27 @@ async def save_report(
     current_wk = get_current_week_key()
     is_late_submission = False  # 마감 경과 후 수정 여부 추적
 
-    # 2-1. 현재 주차인 경우: 마감 여부 확인
     # 보고받는 사람(팀장·그룹장)은 마감 대상에서 제외 — 취합·검토 역할이라 마감에 걸리면 안 된다.
-    if body.week_key == current_wk and not await is_deadline_exempt(db, tid, name):
-        from deadline import load_deadline_config, is_deadline_passed
-        config = await load_deadline_config(db)
-        if is_deadline_passed(body.week_key, config):
-            # 마감 경과 — late_permission이 있으면 허용
-            perm_res = await db.execute(text(
-                f"SELECT expires_at FROM late_permissions WHERE member_name = :name AND week_key = :wk AND expires_at > {now_sql} AND team_id = :tid"
-            ), {"name": name, "wk": body.week_key, "tid": tid})
-            if not perm_res.mappings().first():
-                raise HTTPException(403, "주간보고 마감 시간이 경과했습니다.\n관리자에게 수정 권한을 요청해주세요.")
-            is_late_submission = True  # 마감 후 권한 부여로 수정
+    # ⚠️ 이 판정을 아래 '현재 주차 / 과거 주차' 분기 조건에 섞지 말 것.
+    #    if (현재주차 and not 면제) 로 쓰면 면제 대상이 else(과거 주차 권한 검증)로 떨어져
+    #    현재 주차인데도 "작성 권한 없음" 403 을 맞는다. (실제 발생한 회귀)
+    is_exempt = await is_deadline_exempt(db, tid, name)
+
+    if body.week_key == current_wk:
+        # 2-1. 현재 주차: 마감 여부 확인 (면제 대상은 통과)
+        if not is_exempt:
+            from deadline import load_deadline_config, is_deadline_passed
+            config = await load_deadline_config(db)
+            if is_deadline_passed(body.week_key, config):
+                # 마감 경과 — late_permission이 있으면 허용
+                perm_res = await db.execute(text(
+                    f"SELECT expires_at FROM late_permissions WHERE member_name = :name AND week_key = :wk AND expires_at > {now_sql} AND team_id = :tid"
+                ), {"name": name, "wk": body.week_key, "tid": tid})
+                if not perm_res.mappings().first():
+                    raise HTTPException(403, "주간보고 마감 시간이 경과했습니다.\n관리자에게 수정 권한을 요청해주세요.")
+                is_late_submission = True  # 마감 후 권한 부여로 수정
     else:
-        # 2-2. 과거 주차: 기존 권한 검증 로직
+        # 2-2. 과거 주차: 권한 검증 (면제 대상도 과거 주차는 권한 필요 — 이력 보호)
         perm_res = await db.execute(text(
             f"SELECT expires_at FROM late_permissions WHERE member_name = :name AND week_key = :wk AND expires_at > {now_sql} AND team_id = :tid"
         ), {"name": name, "wk": body.week_key, "tid": tid})

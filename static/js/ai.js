@@ -191,14 +191,26 @@ async function saveIndividualPrompt(key, customId = null) {
 
 let aiMode = 'member'; // 'member' | 'project' | 'team'
 let aiSubMode = 'individual'; // 'individual' | 'group' (팀원별 하위)
-let aiProjMode = 'section'; // 'section'(B: 프로젝트 헤더 + 3열 표) | 'flat'(A: 프로젝트명이 첫 컬럼인 단일 4열 표)
+// 프로젝트별 요약의 하위 형식 3종 (버튼 재클릭으로 순환)
+//   section   — 프로젝트 헤더 + 3열 표 (기본)
+//   flat      — 프로젝트명이 첫 컬럼인 단일 4열 표
+//   vertical  — 표 없이 이번주/차주/이슈를 세로로 쌓기 (내용 많은 팀·모바일에 유리)
+const AI_PROJ_MODES = [
+  { key: 'section',  label: '섹션형',  type: 'project' },
+  { key: 'flat',     label: '단일표',  type: 'project_flat' },
+  { key: 'vertical', label: '세로형',  type: 'project_vertical' },
+];
+let aiProjMode = 'section';
 let currentAiMarkdown = ''; // 복사용 원본 마크다운 저장
 
 function getEffectiveAiMode() {
   // 팀원 요약은 요청자(관리자/주보관리자/팀장) 무관하게 동일한 공용본 — 저장/조회 키 동일.
   // (팀장 본인 보고 병합은 별도 '최종 취합' 기능에서만, 다른 키로 저장 예정)
   if (aiMode === 'member')  return `member_${aiSubMode}`;
-  if (aiMode === 'project') return aiProjMode === 'flat' ? 'project_flat' : 'project';
+  if (aiMode === 'project') {
+    const m = AI_PROJ_MODES.find(x => x.key === aiProjMode);
+    return m ? m.type : 'project';
+  }
   return aiMode;
 }
 function setAiMode(mode) {
@@ -227,9 +239,11 @@ function setAiMode(mode) {
   activeBtn.style.color = '#fff';
   activeBtn.classList.add('active');
 
-  // 하위 토글: 팀원별 → 개인/그룹, 프로젝트별 → 섹션형/단일표, 팀별 → 없음
+  // 하위 토글: 팀원별 → 개인/그룹, 프로젝트별 → 섹션형/단일표/세로형, 팀별 → 없음
   if (subBtn)     subBtn.style.display     = (mode === 'member')  ? 'block' : 'none';
   if (projSubBtn) projSubBtn.style.display = (mode === 'project') ? 'block' : 'none';
+  // 다른 모드에 갔다 돌아와도 현재 하위 형식이 버튼에 그대로 보이도록 다시 칠한다
+  if (mode === 'project') _paintProjSubBtn();
 
   const wk = document.getElementById('adminWeekSel').value;
   if (wk) loadSavedSummary(wk);
@@ -254,16 +268,23 @@ function toggleAiSubMode() {
 
 // 프로젝트별 하위 토글: 섹션형(B, 기본) ↔ 단일표(A)
 function toggleAiProjSubMode() {
-  const btn = document.getElementById('aiProjSubMode');
-  if (aiProjMode === 'section') {
-    aiProjMode = 'flat';
-    if (btn) { btn.textContent = '단일표'; btn.style.color = 'var(--accent)'; btn.style.borderColor = 'var(--accent)'; }
-  } else {
-    aiProjMode = 'section';
-    if (btn) { btn.textContent = '섹션형'; btn.style.color = 'var(--text2)'; btn.style.borderColor = 'var(--border)'; }
-  }
+  // 3종 순환: 섹션형 → 단일표 → 세로형 → (다시) 섹션형
+  const i = AI_PROJ_MODES.findIndex(x => x.key === aiProjMode);
+  aiProjMode = AI_PROJ_MODES[(i + 1) % AI_PROJ_MODES.length].key;
+  _paintProjSubBtn();
   const wk = document.getElementById('adminWeekSel').value;
   if (wk) loadSavedSummary(wk);
+}
+
+// 하위 형식 버튼 라벨·강조 갱신 (기본값 section 일 때만 회색, 나머지는 강조)
+function _paintProjSubBtn() {
+  const btn = document.getElementById('aiProjSubMode');
+  if (!btn) return;
+  const m = AI_PROJ_MODES.find(x => x.key === aiProjMode) || AI_PROJ_MODES[0];
+  btn.textContent = m.label;
+  const on = m.key !== 'section';
+  btn.style.color = on ? 'var(--accent)' : 'var(--text2)';
+  btn.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
 }
 
 // ── AI 생성 진행 표시 (의사 진행률 — 예상 소요시간 기반 점근, 완료 시 100%) ──
@@ -440,8 +461,15 @@ let _fmMyReport = null;
 async function _fmCheckMyReport() {
   const wk = _finalMergeWeek();
   if (!wk) { _fmMyReport = null; return; }
-  try { _fmMyReport = !!(await api(`/api/reports/my?week=${wk}`)); }
-  catch { _fmMyReport = false; }
+  try {
+    _fmMyReport = !!(await api(`/api/reports/my?week=${wk}`));
+  } catch (e) {
+    // 조회 실패를 '보고 없음'으로 단정하면, 실제로는 작성했는데도
+    // "내 보고부터 작성하세요" 안내가 떠서 취합 화면에 못 들어간다.
+    // 판정 불가(null)로 두면 아래 updateFmCta 가 기존 상태를 유지한다.
+    console.warn('[FM] 내 보고 조회 실패 — 판정 보류:', e);
+    _fmMyReport = null;
+  }
 }
 
 // 현황 탭 CTA 배너 — 결재권자에게만 노출, 본인 보고 상태로 문구/펄스 전환
@@ -494,9 +522,13 @@ async function updateFmCta() {
   await _fmCheckMyReport();
   const sub = document.getElementById('fmCtaSub');
   const btn = document.getElementById('fmCtaBtn');
-  if (_fmMyReport) {
+  // null = 조회 실패로 판정 불가. 이때는 '없음'으로 단정하지 않고 취합을 열어준다
+  // (저장된 취합본이 있는데 못 여는 상황을 막는 쪽이 안전)
+  if (_fmMyReport !== false) {
     el.classList.add('ready');
-    if (sub) sub.textContent = `✅ 내 보고 작성 완료 — ${orgLabel('member')} 요약과 병합해 최종 보고서를 만들 준비가 됐어요.`;
+    if (sub) sub.textContent = _fmMyReport === true
+      ? `✅ 내 보고 작성 완료 — ${orgLabel('member')} 요약과 병합해 최종 보고서를 만들 준비가 됐어요.`
+      : `${orgLabel('member')} 요약과 병합해 최종 보고서를 만들 수 있어요.`;
     if (btn) btn.textContent = '📋 최종 취합본 만들기';
     el.onclick = () => openFinalMerge();   // inline onclick 대체 (상태별 분기)
   } else {
@@ -544,11 +576,8 @@ async function openFinalMerge() {
   if (_pv0 && _ed0 && !_ed0.value.trim()) {
     _pv0.innerHTML = `<div class="fm-empty"><span class="spin" style="width:22px;height:22px;border-width:2.5px"></span>저장된 취합본 확인 중...</div>`;
   }
-  // 본인 보고 상태 확인 후 가이드 갱신 (모달은 먼저 열어 체감 지연 제거)
-  await _fmCheckMyReport();
-  const genBtn = document.getElementById('finalGenBtn');
-  if (genBtn) genBtn.disabled = !_fmMyReport;
-  // 저장해둔 최종 취합본 자동 로드 (진행 중인 편집 내용이 없을 때만)
+  // ⚠️ 저장본을 '먼저' 불러온다. 본인 보고 판정보다 뒤에 두면, 판정이 지연·실패했을 때
+  //    이미 만들어둔 취합본이 있는데도 "내 보고부터 작성하세요" 가이드가 떠버린다.
   const ed = document.getElementById('finalMergeEdit');
   if (ed && !ed.value.trim() && wk) {
     try {
@@ -556,9 +585,16 @@ async function openFinalMerge() {
       if (saved && saved.summary) {
         ed.value = saved.summary;
         if (st) st.textContent = '💾 저장된 최종 취합본을 불러왔습니다 — [✨ 병합 생성]으로 새로 만들 수도 있어요.';
+        renderFinalPreview();   // 판정을 기다리지 않고 즉시 표시
       }
-    } catch {}
+    } catch (e) { console.warn('[FM] 저장본 로드 실패:', e); }
   }
+
+  // 본인 보고 상태 확인 후 가이드 갱신 (모달은 먼저 열어 체감 지연 제거)
+  await _fmCheckMyReport();
+  const genBtn = document.getElementById('finalGenBtn');
+  // 판정 불가(null)면 막지 않는다 — 조회 실패로 기능이 잠기는 쪽이 더 나쁘다
+  if (genBtn) genBtn.disabled = (_fmMyReport === false);
   renderFinalPreview();
   _fmRefreshSubmitState();   // 보고 제출 상태 표시 (버튼 라벨·시각)
 }

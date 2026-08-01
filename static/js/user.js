@@ -473,7 +473,20 @@ async function renderWriteForm() {
     fetchMyReport(currentWriteWeek),
     fetchMyReport(_prevWk),
   ]);
-  if (curRes.status === 'fulfilled' && curRes.value) ex = curRes.value;
+  if (curRes.status === 'fulfilled' && curRes.value) {
+    ex = curRes.value;
+  } else if (curRes.status === 'rejected') {
+    // ⚠️ 조회 실패를 '보고 없음'으로 취급하면 안 된다.
+    //    빈 폼으로 렌더되어 사용자에게는 저장분이 사라진 것처럼 보이고,
+    //    그 상태로 저장하면 실제 내용까지 빈 값으로 덮어쓴다.
+    //    직전에 받아둔 값이 있으면 그것으로 렌더하고, 없으면 경고만 띄운다.
+    if (_currentReport && Object.keys(_currentReport).length) {
+      ex = _currentReport;
+      toast('⚠️ 최신 내용을 불러오지 못해 직전에 불러온 내용을 표시합니다. 새로고침 해주세요.', 'warn');
+    } else {
+      toast('⚠️ 작성 내용을 불러오지 못했습니다. 새로고침 후 다시 확인해주세요.', 'err');
+    }
+  }
   _lastWeekReport = (lwRes.status === 'fulfilled' && lwRes.value) ? lwRes.value : null;
   _currentReport = ex;
 
@@ -900,7 +913,9 @@ async function submitReport() {
       setTimeout(() => toast('📋 이제 [최종 취합본 만들기]로 보고서를 완성할 수 있어요!', 'ok'), 1600);
     }
   } catch (e) {
-    toast('저장 실패: ' + e.message, 'err');
+    // 저장 실패 시 폼을 다시 렌더하지 않는다 — 사용자가 입력한 내용이 그대로 화면에 남아야
+    // 다시 시도하거나 복사해둘 수 있다. (재렌더하면 서버값으로 되돌아가 작성분이 날아간다)
+    toast('저장 실패: ' + e.message + '\n입력한 내용은 화면에 그대로 있습니다.', 'err');
   } finally {
     hideActionLoader();
   }
